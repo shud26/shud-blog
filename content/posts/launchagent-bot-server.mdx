@@ -1,0 +1,244 @@
+---
+title: 맥미니로 24시간 봇 서버 만들기 — LaunchAgent 세팅 A to Z
+description: 맥미니 M2를 파이썬 봇 전용 서버로 세팅하는 과정을 처음부터 끝까지 정리했습니다. plist 작성, 환경변수, 로그 확인, 자동 재시작까지.
+date: 2026-04-16
+series: 봇입문가이드
+seriesOrder: 1
+tags: [맥미니, LaunchAgent, 파이썬봇, 서버세팅, 자동화]
+---
+
+봇을 만들고 나서 제일 막막했던 게 "이걸 어떻게 24시간 돌리지?"였습니다.
+
+노트북으로 돌리면 뚜껑 닫으면 꺼지고, 클라우드 서버는 비용이 나가고. 집에 굴러다니는 맥미니를 서버로 써보기로 했습니다. macOS에는 **LaunchAgent**라는 기능이 있는데, 이걸 쓰면 로그인 없이도 봇이 자동으로 시작되고 꺼지면 재시작됩니다.
+
+처음 세팅할 때 삽질을 꽤 했는데, 그 과정을 처음부터 정리해봤습니다.
+
+---
+
+## LaunchAgent가 뭔가요
+
+macOS에는 백그라운드 프로세스를 관리하는 시스템이 있습니다. `launchd`라고 부르는데, 여기에 `.plist` 파일을 등록하면 macOS가 알아서 프로세스를 관리해줍니다.
+
+- 맥 켜지면 자동 시작
+- 봇이 꺼지면 자동 재시작
+- 로그인 안 해도 실행
+- 로그 파일 자동 저장
+
+리눅스의 `systemd`, 윈도우의 `작업 스케줄러`와 비슷한 개념입니다.
+
+---
+
+## 준비물
+
+- 맥미니 (또는 맥 아무거나)
+- Python 설치 완료 (저는 pyenv로 3.11.11 사용)
+- 돌릴 봇 파이썬 파일
+
+Python 경로 확인은 터미널에서:
+
+```bash
+which python3
+# 또는 pyenv 쓰는 경우
+pyenv which python3.11
+```
+
+저는 pyenv라서 경로가 이렇게 나옵니다:
+```
+/Users/shud/.pyenv/versions/3.11.11/bin/python3.11
+```
+
+이 경로를 나중에 plist에 써야 하니까 메모해두세요.
+
+---
+
+## plist 파일 만들기
+
+LaunchAgent 설정 파일은 `~/Library/LaunchAgents/` 폴더에 넣습니다.
+
+파일명 규칙은 `com.본인이름.봇이름.plist` 형태로 짓습니다.
+
+```bash
+nano ~/Library/LaunchAgents/com.shud.mybot.plist
+```
+
+내용은 이렇게 씁니다:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+  <!-- 식별자 (파일명이랑 맞추세요) -->
+  <key>Label</key>
+  <string>com.shud.mybot</string>
+
+  <!-- 실행할 명령어 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/shud/.pyenv/versions/3.11.11/bin/python3.11</string>
+    <string>/Users/shud/mybot/bot.py</string>
+  </array>
+
+  <!-- 환경변수 (API 키 등) -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>API_KEY</key>
+    <string>여기에_실제_키_입력</string>
+    <key>TG_TOKEN</key>
+    <string>텔레그램_토큰</string>
+  </dict>
+
+  <!-- 맥 켜질 때 자동 시작 -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- 꺼지면 자동 재시작 -->
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- 로그 저장 경로 -->
+  <key>StandardOutPath</key>
+  <string>/Users/shud/mybot/stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/shud/mybot/stderr.log</string>
+
+</dict>
+</plist>
+```
+
+---
+
+## 반드시 넣어야 하는 것: PYTHONUNBUFFERED
+
+처음에 이걸 몰라서 며칠 삽질했습니다.
+
+LaunchAgent로 Python을 실행하면 출력이 버퍼에 쌓였다가 한참 뒤에 로그 파일에 써집니다. 심한 경우 봇이 멀쩡히 돌아가는데 로그 파일이 텅 비어있어서 뭔가 잘못된 줄 알았습니다.
+
+```xml
+<key>PYTHONUNBUFFERED</key>
+<string>1</string>
+```
+
+이걸 EnvironmentVariables에 넣으면 출력이 즉시 파일에 써집니다. 꼭 넣으세요.
+
+---
+
+## 등록하고 시작하기
+
+plist 파일을 만들었으면 등록합니다:
+
+```bash
+# 등록
+launchctl load ~/Library/LaunchAgents/com.shud.mybot.plist
+
+# 시작
+launchctl start com.shud.mybot
+```
+
+등록하면 `RunAtLoad: true`라서 바로 시작됩니다.
+
+---
+
+## 자주 쓰는 명령어
+
+```bash
+# 현재 실행 중인 내 봇 목록
+launchctl list | grep shud
+
+# 봇 멈추기
+launchctl stop com.shud.mybot
+
+# 봇 다시 시작하기
+launchctl stop com.shud.mybot
+launchctl start com.shud.mybot
+
+# 봇 완전히 해제하기 (자동시작 취소)
+launchctl unload ~/Library/LaunchAgents/com.shud.mybot.plist
+
+# 실시간 로그 보기
+tail -f ~/mybot/stdout.log
+
+# 에러 로그 보기
+tail -f ~/mybot/stderr.log
+```
+
+`launchctl list | grep shud` 하면 이렇게 나옵니다:
+
+```
+PID   Status  Label
+1234  0       com.shud.mybot
+```
+
+PID가 숫자면 실행 중, `-`면 멈춤, Status가 0이 아니면 에러로 종료된 것입니다.
+
+---
+
+## 코드 수정 후 재배포
+
+봇 코드를 수정했을 때는:
+
+```bash
+# 맥북에서 맥미니로 파일 전송
+scp /Users/hun/mybot/bot.py shud@192.168.45.7:/Users/shud/mybot/bot.py
+
+# 맥미니에서 재시작 (SSH로)
+ssh shud@192.168.45.7 "launchctl stop com.shud.mybot && launchctl start com.shud.mybot"
+```
+
+같은 집 와이파이라면 192.168.x.x 내부 IP로 연결됩니다. 맥미니 IP는 시스템 설정 → 네트워크에서 확인할 수 있습니다.
+
+---
+
+## 절전 비활성화 — 중요
+
+봇 서버로 쓴다면 맥미니가 절전 모드로 들어가면 안 됩니다. 터미널에서 한 번만 실행해두면 됩니다:
+
+```bash
+# 절전 전부 비활성화
+sudo pmset -a sleep 0
+sudo pmset -a disksleep 0
+sudo pmset -a displaysleep 0
+
+# 설정 확인
+pmset -g
+```
+
+디스플레이는 절전해도 봇에는 영향 없으니 `displaysleep`은 취향대로.
+
+---
+
+## 실제로 돌리고 있는 봇들
+
+현재 맥미니에서 이렇게 운영 중입니다:
+
+| 봇 | Label | 역할 |
+|----|-------|------|
+| 나도봇 | com.shud.nadogrid | BTC+ETH 핑퐁 |
+| 업비트봇 | com.shud.upbitbot | 현물 MA추세+핑퐁 |
+| AI비서 | com.shud.clawbot | 텔레그램 AI 채팅 |
+
+각각 plist 파일 하나씩 있고, API 키는 전부 EnvironmentVariables에 넣어서 코드에 하드코딩하지 않았습니다.
+
+---
+
+## 자주 생기는 문제
+
+**봇이 시작됐는데 로그가 안 보여요**
+→ `PYTHONUNBUFFERED=1` 넣었는지 확인. 안 넣으면 로그가 한참 뒤에 써집니다.
+
+**PID가 `-`로 나와요**
+→ stderr.log 확인. 대부분 경로 오류나 import 오류.
+
+**재시작해도 변경사항이 안 반영돼요**
+→ stop 후 start. unload/load는 plist 자체가 바뀐 경우에만.
+
+**원격에서 접속이 안 돼요**
+→ 맥미니 시스템 설정 → 일반 → 공유 → 원격 로그인 활성화 확인.
+
+---
+
+다음 글에서는 Python으로 텔레그램 봇을 만들어서 LaunchAgent로 연결하는 과정을 써보겠습니다.

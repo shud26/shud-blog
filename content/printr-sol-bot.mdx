@@ -1,0 +1,158 @@
+---
+title: Printr 뱅어봇을 솔라나로 확장하다 — DBC 프로그램 구독부터 Jupiter 매수까지
+description: Base chain 뱅어봇을 솔라나로 이식했습니다. Meteora DBC 프로그램 WebSocket 구독으로 신규 토큰을 감지하고, 10분 후 Jupiter에 유동성이 생기면 자동매수합니다.
+date: 2026-04-18
+series: 봇운영인프라
+seriesOrder: 12
+tags: [솔라나, Printr, 뱅어봇, Jupiter, Meteora, DBC, 크립토봇, 자동화]
+---
+
+> 이 글은 개인 프로젝트 기록이며 투자 조언이 아닙니다.
+
+[Base chain 뱅어봇](/blog/printr-banger-bot)을 솔라나로 확장했다.
+
+Printr은 원래 옴니체인 런치패드다. Base만 되는 게 아니라 Solana, BNB, Arbitrum 등 8개 체인을 지원한다. Base 봇이 잘 돌고 있으니 솔라나 쪽도 감지해보고 싶었다.
+
+## Base와 솔라나의 차이
+
+Base에서는 팩토리 컨트랙트 이벤트 로그를 12초마다 폴링했다. EVM 구조라 `eth_getLogs`로 이벤트를 뽑아오면 됐다.
+
+솔라나는 다르다.
+
+| | Base | Solana |
+|---|---|---|
+| 감지 방식 | HTTP 폴링 (12초) | WebSocket 구독 (실시간) |
+| 블록 시간 | ~2초 | ~0.4초 |
+| 라이브러리 | web3.py | websockets + solders |
+
+솔라나는 RPC의 `logsSubscribe`로 프로그램 로그를 실시간 구독할 수 있다. 폴링 없이 이벤트가 오는 즉시 받는다.
+
+## Printr 솔라나 프로그램 찾기
+
+Printr 공식 문서에서 솔라나 프로그램 주소를 찾았다.
+
+```
+T8HsGYv7sMk3kTnyaRqZrbRPuntYzdh12evXBkprint
+```
+
+그런데 Printr은 "Solana IDL을 공개하지 않는다"고 명시한다. 직접 instruction을 구성할 수 없다는 뜻이다. 대신 API를 쓰라는데, 그 API도 파트너 초대코드가 필요하다.
+
+매수를 Printr 컨트랙트로 직접 하는 건 포기했다.
+
+## 다른 경로: Meteora DBC + Jupiter
+
+Printr 솔라나 토큰은 Meteora DBC(Dynamic Bonding Curve) 위에서 동작한다.
+
+```
+dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN
+```
+
+DBC는 본딩커브 풀이다. 토큰이 여기서 거래되다가 목표 금액이 채워지면 Meteora DAMM-v2 실제 풀로 이전된다(졸업). 졸업하면 Jupiter 같은 어그리게이터에서 라우팅이 잡힌다.
+
+전략은 이렇다.
+
+1. DBC 프로그램 로그 구독 → `InitializeVirtualPoolWithSplToken` / `InitializeVirtualPoolWithToken2022` 감지
+2. 10분 대기
+3. Jupiter에서 quote 시도 → 유동성 있으면 매수, 없으면 스킵
+
+Jupiter가 자동 필터 역할을 한다. 유동성이 없으면 quote 자체를 안 주기 때문이다.
+
+## 신규 토큰 빈도 확인
+
+먼저 토큰이 얼마나 자주 런칭되는지 확인했다.
+
+```python
+# DBC 프로그램 WebSocket 구독 테스트
+async with websockets.connect('wss://api.mainnet-beta.solana.com', ssl=ssl_ctx) as ws:
+    await ws.send(json.dumps({
+        "method": "logsSubscribe",
+        "params": [{"mentions": [DBC_PROGRAM]}, {"commitment": "confirmed"}]
+    }))
+```
+
+3분 테스트에서 3개 감지됐다. 분당 1개 수준이다. Base Printr보다 훨씬 활발하다.
+
+```
+🚨 [1] InitializeVirtualPoolWithSplToken — 3uLoPUxKhwMv...
+🚨 [2] InitializeVirtualPoolWithToken2022 — 4JzKqFCSgQhP...
+🚨 [3] InitializeVirtualPoolWithSplToken — 5rZe5cpqkAVi...
+```
+
+두 종류가 있다. SPL 토큰과 Token2022. 둘 다 잡아야 한다.
+
+## 구현
+
+```python
+DBC_PROGRAM   = "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN"
+LAUNCH_INSTRS = {
+    "InitializeVirtualPoolWithSplToken",
+    "InitializeVirtualPoolWithToken2022",
+}
+WAIT_MINUTES    = 10
+BUY_AMOUNT_SOL  = 0.05
+MAX_PRICE_IMPACT = 15.0
+```
+
+감지 → 처리는 `asyncio.create_task()`로 비동기 처리해서 폴링이 블록되지 않게 했다. Base 봇에서 배운 패턴이다.
+
+```python
+if instrs & LAUNCH_INSTRS:
+    asyncio.create_task(process_new_token(sig))
+```
+
+토큰 민트 추출 시 한 가지 함정이 있었다. 공개 RPC는 트랜잭션 인덱싱이 늦다. 감지 직후 바로 TX를 조회하면 `null`이 반환된다.
+
+재시도 로직으로 해결했다.
+
+```python
+delays = [2, 4, 8, 12, 20]  # 초
+for attempt, delay in enumerate(delays):
+    await asyncio.sleep(delay)
+    result = await fetch_tx(sig)
+    if result:
+        return extract_mint(result)
+    print(f"시도 {attempt+1}/5 — 재시도...")
+```
+
+Jupiter 매수는 quote API로 슬리피지 확인 후 swap API로 트랜잭션을 받아서 서명·전송한다.
+
+```python
+# Quote
+params = {"inputMint": WSOL_MINT, "outputMint": token_mint,
+          "amount": BUY_AMOUNT_LAMP, "slippageBps": 500}
+quote = await get(JUPITER_QUOTE, params=params)
+
+# Swap
+tx_b64 = await post(JUPITER_SWAP, {"quoteResponse": quote, "userPublicKey": wallet})
+signed = VersionedTransaction(tx.message, [keypair])
+tx_sig = await send_transaction(signed)
+```
+
+## 현재 운영 상태
+
+지금은 SOL 입금 전이라 알림 전용으로 돌리고 있다. `PRIVATE_KEY_SOL` 환경변수가 없으면 `AUTO_BUY = False`로 자동 전환된다.
+
+```
+Printr SOL 뱅어봇 시작 — 알림 전용
+감지: {'InitializeVirtualPoolWithSplToken', 'InitializeVirtualPoolWithToken2022'}
+필터: 10분 대기 후 Jupiter 유동성 확인
+[WS] 구독 완료 (sub_id=7082449)
+```
+
+SOL 넣고 private key 추가하면 자동매수로 전환된다.
+
+## Base vs Solana 봇 비교
+
+운영해보니 구조가 비슷하다.
+
+| | Base 뱅어봇 | Solana 뱅어봇 |
+|---|---|---|
+| 감지 | HTTP 폴링 12s | WebSocket 실시간 |
+| 신규 토큰 빈도 | 낮음 | 분당 1개 |
+| 매수 방법 | 팩토리 컨트랙트 직접 | Jupiter API |
+| 필터 | 점수제 (10분) | 유동성 체크 (10분) |
+| 경쟁봇 | 적음 | 많음 |
+
+솔라나는 빠르고 활발하지만 경쟁도 더 세다. Base는 아직 조용한 편이라 필터만 잘 짜면 유리하다.
+
+두 봇을 같이 굴리면 커버리지가 넓어진다.

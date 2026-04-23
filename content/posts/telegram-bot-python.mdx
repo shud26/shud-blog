@@ -1,0 +1,187 @@
+---
+title: Python 텔레그램 봇 30분 만에 만들기 — 봇 알림의 기초
+description: 파이썬으로 텔레그램 봇을 만들고 LaunchAgent로 24시간 돌리는 법을 정리했습니다. 봇 토큰 발급부터 메시지 전송, 명령어 처리까지.
+date: 2026-04-17
+series: 봇입문가이드
+seriesOrder: 2
+tags: [텔레그램봇, 파이썬, 알림봇, 자동화]
+---
+
+> 이 글은 개인 학습 경험을 기록한 것입니다.
+
+봇을 만들고 나서 제일 먼저 붙인 기능이 텔레그램 알림입니다.
+
+뭔가 체결됐는지, 에러가 났는지, 봇이 멈췄는지 — 핸드폰에서 확인할 수 있으면 훨씬 편합니다. 텔레그램 봇 API는 무료고, Python에서 `requests` 하나면 충분합니다.
+
+---
+
+## 봇 토큰 발급
+
+텔레그램에서 `@BotFather`를 검색하고 채팅을 시작합니다.
+
+```
+/newbot
+```
+
+명령어를 보내면 봇 이름을 물어봅니다. 이름 정하면 토큰을 발급해줍니다.
+
+```
+1234567890:ABCDEFabcdef...
+```
+
+이 토큰이 API 키입니다. 절대 공개하지 마세요.
+
+---
+
+## Chat ID 확인
+
+봇이 메시지를 보낼 대상(내 계정)의 Chat ID가 필요합니다.
+
+1. 발급받은 봇과 대화 시작 (아무 메시지나 보내기)
+2. 브라우저에서 아래 주소 열기
+
+```
+https://api.telegram.org/bot[토큰]/getUpdates
+```
+
+JSON 응답에서 `"chat":{"id": 숫자}` 찾으면 됩니다. 그 숫자가 Chat ID입니다.
+
+---
+
+## 메시지 전송 함수
+
+```python
+import requests
+
+TG_TOKEN = "여기에_토큰"
+TG_CHAT_ID = "여기에_chat_id"
+
+def send_tg(message: str):
+    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
+    data = {
+        "chat_id": TG_CHAT_ID,
+        "text": message,
+        "parse_mode": "HTML"
+    }
+    try:
+        requests.post(url, data=data, timeout=5)
+    except Exception as e:
+        print(f"텔레그램 전송 실패: {e}")
+```
+
+이걸 봇 어디서든 호출하면 됩니다:
+
+```python
+send_tg("✅ 매수 체결: BTC 107,400,000원")
+send_tg("⚠️ 에러 발생: API 연결 실패")
+```
+
+---
+
+## 명령어 처리 (polling 방식)
+
+봇에서 명령어도 받고 싶다면 polling으로 메시지를 주기적으로 확인합니다.
+
+```python
+import requests
+import time
+
+TG_TOKEN = "여기에_토큰"
+TG_CHAT_ID = "여기에_chat_id"
+offset = 0
+
+def get_updates():
+    global offset
+    url = f"https://api.telegram.org/bot{TG_TOKEN}/getUpdates"
+    params = {"offset": offset, "timeout": 10}
+    try:
+        res = requests.get(url, params=params, timeout=15)
+        updates = res.json().get("result", [])
+        for update in updates:
+            offset = update["update_id"] + 1
+            process_update(update)
+    except Exception as e:
+        print(f"업데이트 조회 실패: {e}")
+
+def process_update(update):
+    message = update.get("message", {})
+    chat_id = str(message.get("chat", {}).get("id", ""))
+    text = message.get("text", "")
+
+    if chat_id != TG_CHAT_ID:
+        return  # 다른 사람 차단
+
+    if text == "/status":
+        send_tg("봇 정상 작동 중")
+    elif text == "/stop":
+        send_tg("봇 중지 명령 수신")
+        # 중지 로직 추가
+
+while True:
+    get_updates()
+    time.sleep(2)
+```
+
+---
+
+## LaunchAgent로 24시간 돌리기
+
+이전 글에서 만든 LaunchAgent 방식 그대로 적용합니다.
+
+`~/Library/LaunchAgents/com.shud.tgbot.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.shud.tgbot</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/shud/.pyenv/versions/3.11.11/bin/python3.11</string>
+    <string>/Users/shud/tgbot/bot.py</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>TG_TOKEN</key>
+    <string>여기에_토큰</string>
+    <key>TG_CHAT_ID</key>
+    <string>여기에_chat_id</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/shud/tgbot/stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/shud/tgbot/stderr.log</string>
+</dict>
+</plist>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.shud.tgbot.plist
+launchctl start com.shud.tgbot
+```
+
+---
+
+## 실제로 이렇게 쓰고 있습니다
+
+현재 운영 중인 봇들은 전부 텔레그램 알림이 붙어있습니다.
+
+- **체결 알림**: 매수/매도 체결될 때마다 가격과 수량 전송
+- **에러 알림**: 예외 발생 시 즉시 알림
+- **일별 요약**: 매일 자정 PnL 요약 전송
+- **/status 명령어**: 현재 포지션과 봇 상태 조회
+
+핸드폰 하나로 봇 전체를 모니터링할 수 있어서 편합니다.
+
+---
+
+다음 글에서는 업비트봇 실제 운영 기록을 정리해보겠습니다.

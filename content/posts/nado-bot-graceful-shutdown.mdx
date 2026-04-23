@@ -1,0 +1,96 @@
+---
+title: 봇을 껐는데 포지션이 살아있다 — SIGTERM과 graceful shutdown
+description: launchctl stop을 쳤는데 오더는 취소됐지만 포지션이 그대로였습니다. 종료 핸들러가 있다고 안전한 게 아니었습니다.
+date: 2026-04-18
+series: 봇운영인프라
+seriesOrder: 11
+tags: [나도봇, 버그수정, LaunchAgent, SIGTERM, 봇운영인프라]
+---
+
+> 이 글은 개인 프로젝트 기록이며 투자 조언이 아닙니다.
+
+봇을 잠깐 멈추려고 `launchctl stop com.shud.nadogrid`를 쳤다.
+
+오더는 취소됐다. 그런데 포지션이 그대로 남아있었다. ETH 롱이 열린 채로 봇만 꺼진 상태.
+
+봇이 없으니 스탑로스도 없다. 그냥 물리는 거다.
+
+## 원인
+
+봇에는 종료 핸들러가 있었다.
+
+```python
+def graceful_shutdown(signum, frame):
+    global running
+    print("\n[BOT] Shutting down gracefully...")
+    running = False
+
+signal.signal(signal.SIGTERM, graceful_shutdown)
+signal.signal(signal.SIGINT, graceful_shutdown)
+```
+
+`launchctl stop`은 SIGTERM을 보낸다. 핸들러가 받아서 `running = False`로 루프를 종료한다.
+
+문제는 여기서 끝난다는 거다. 오더 취소도, 포지션 종료도 없이 그냥 꺼진다.
+
+봇에는 이미 `handle_kill()`이라는 함수가 있었다. 오더 취소, 포지션 시장가 종료, 실패 시 5회 재시도까지 갖춰진 함수다. 근데 종료 핸들러가 그걸 안 부르고 있었다.
+
+## 수정
+
+한 줄 바꿨다.
+
+```python
+# 수정 전
+def graceful_shutdown(signum, frame):
+    global running
+    print("\n[BOT] Shutting down gracefully...")
+    running = False
+
+# 수정 후
+def graceful_shutdown(signum, frame):
+    print("\n[BOT] Shutting down gracefully...")
+    handle_kill(close_position=True)
+```
+
+`handle_kill(close_position=True)`가 오더 취소 → 포지션 종료 → 텔레그램 알림까지 처리한다.
+
+## 서킷브레이커 문제도 같이 발견
+
+수정하면서 또 하나 발견했다.
+
+서킷브레이커(순노출 $200 초과)가 발동하면 봇이 포지션 정리 후 종료된다. LaunchAgent의 `KeepAlive` 설정으로 자동 재시작되는데, 재시작하면 또 막힌다.
+
+```
+[BOT] BLOCKED: Circuit breaker triggered at 2026-04-17T10:25:07
+[BOT] Reason: Net position $201 > $200
+[BOT] Run with --reset to clear, or manually edit state.json
+```
+
+서킷브레이커 상태가 `state.json`에 저장되고, 재시작해도 그 상태를 읽어서 다시 종료(`sys.exit(0)`)를 반복했다. 매번 수동으로 `state.json`을 편집해야 했다.
+
+수정은 간단하다. 재시작 시 서킷브레이커 상태를 자동 초기화하면 된다.
+
+```python
+# 수정 전: 막고 종료
+if state.get("circuit_breaker_stopped"):
+    print(f"[BOT] BLOCKED: {reason}")
+    sys.exit(0)
+
+# 수정 후: 알림 보내고 초기화 후 재시작
+if state.get("circuit_breaker_stopped"):
+    state.pop("circuit_breaker_stopped", None)
+    state.pop("circuit_breaker_reason", None)
+    state.pop("circuit_breaker_time", None)
+    save_state()
+    telegram_alert.send_message(f"서킷브레이커 자동 초기화\n사유: {reason}\n→ 재시작합니다")
+```
+
+이제 서킷브레이커가 발동해도 텔레그램 알림이 오고, 봇이 알아서 재시작된다.
+
+## 교훈
+
+종료 핸들러가 있다고 해서 안전하게 종료되는 게 아니다. 핸들러가 뭘 하는지가 중요하다.
+
+`launchctl stop`, Ctrl+C, 서버 재부팅 — 모두 SIGTERM이나 SIGINT를 보낸다. 봇이 켜져 있는 한 포지션 관리 책임은 봇에 있다. 꺼질 때도 마찬가지다.
+
+그리고 자동 재시작 설정을 믿는다면, 재시작했을 때 실제로 재시작이 되는지도 확인해야 한다.
