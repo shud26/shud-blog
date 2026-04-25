@@ -1,0 +1,238 @@
+---
+title: Ollama로 매일 주식 리포트 자동 생성하기 — stream=True 하나로 timeout 해결
+description: 로컬 LLM(Ollama qwen2.5:14b)으로 RSS 뉴스 수집 → 종목 분석 → git push까지 전자동 파이프라인을 만들었습니다. Claude API 없이, 돈 한 푼 안 쓰고.
+date: 2026-04-26
+series: 봇운영인프라
+seriesOrder: 17
+tags: [Ollama, 자동화, 주식, LaunchAgent, Python, LLM]
+---
+
+Claude API 쓰면 편한데, 매일 돌리면 돈이 나갑니다.
+
+그래서 맥미니에 설치된 Ollama(qwen2.5:14b)로 매일 아침 주식 리포트를 자동 생성하는 파이프라인을 만들었습니다. RSS로 뉴스 긁어오고, LLM이 분석해서, JSON으로 저장하고, git push까지 자동으로.
+
+중간에 timeout 문제가 있었는데, `stream=True` 한 줄로 해결됐습니다.
+
+---
+
+## 전체 구조
+
+```
+[맥미니 LaunchAgent]
+08:00 PDT → economy_news.py  → economy_2026-04-26.txt
+09:00 PDT → stock_report.py  → 2026-04-26.json → git push → Vercel
+```
+
+Vercel에 Next.js 사이트가 있고, `data/reports/YYYY-MM-DD.json`을 읽어서 페이지를 렌더링합니다. git push 하면 자동 배포.
+
+---
+
+## 1단계: 뉴스 수집 (economy_news.py)
+
+RSS 피드 12개에서 뉴스를 긁어옵니다.
+
+```python
+RSS_FEEDS = [
+    ("연합뉴스 경제",  "KR", "https://www.yna.co.kr/rss/economy.xml"),
+    ("한국경제",       "KR", "https://www.hankyung.com/feed/economy"),
+    ("매일경제",       "KR", "https://www.mk.co.kr/rss/30000001/"),
+    ("MarketWatch",    "US", "https://feeds.content.dowjones.io/public/rss/mw_topstories"),
+    ("CNBC Top News",  "US", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
+    ("Yahoo Finance",  "US", "https://finance.yahoo.com/rss/topstories"),
+    # ... 총 12개
+]
+```
+
+`feedparser` 없이 `xml.etree.ElementTree`로 직접 파싱합니다. 외부 의존성 최소화.
+
+피드마다 RSS 2.0과 Atom 형식이 섞여 있어서 둘 다 처리해야 합니다.
+
+```python
+# RSS 2.0
+for item in root.findall(".//item")[:MAX_ITEMS]:
+    title = strip_html(item.findtext("title", ""))
+    ...
+
+# Atom fallback
+if not items:
+    for entry in root.findall(".//atom:entry", ns)[:MAX_ITEMS]:
+        ...
+```
+
+수집된 뉴스는 텍스트 파일로 저장. 다음 스크립트가 읽어갑니다.
+
+---
+
+## 2단계: Ollama 분석 (stock_report.py)
+
+뉴스 파일을 읽어서 Ollama에 던집니다.
+
+```python
+OLLAMA_URL = "http://localhost:11434/api/generate"
+MODEL      = "qwen2.5:14b"
+```
+
+프롬프트는 JSON 형식을 지정합니다. 국내 6종목 + 미국 4종목, 각각 ticker/매수구간/목표가/TradingView URL 포함.
+
+---
+
+## 문제: timeout
+
+처음엔 이렇게 짰습니다.
+
+```python
+payload = json.dumps({
+    "model": MODEL,
+    "prompt": prompt,
+    "stream": False,        # ← 여기가 문제
+    "options": {"num_predict": 6000}
+}).encode()
+
+with urllib.request.urlopen(req, timeout=360) as r:
+    return json.loads(r.read()).get("response", "")
+```
+
+`stream=False`로 하면 Ollama가 **전체 응답을 다 생성한 뒤에** HTTP 응답을 보냅니다.
+
+qwen2.5:14b가 6000토큰 생성하는 데 맥미니 M2에서 6~10분 걸립니다. 360초 timeout → 터짐.
+
+timeout을 600초로 늘려도 마찬가지였습니다. 응답 자체가 안 오니까요.
+
+---
+
+## 해결: stream=True
+
+```python
+def call_ollama(prompt: str) -> str:
+    payload = json.dumps({
+        "model":  MODEL,
+        "prompt": prompt,
+        "stream": True,          # ← 이것만 바꿈
+        "options": {"temperature": 0.3, "num_predict": 4000}
+    }).encode()
+
+    req = urllib.request.Request(OLLAMA_URL, data=payload,
+                                  headers={"Content-Type": "application/json"})
+    full = ""
+    with urllib.request.urlopen(req, timeout=600) as r:
+        for line in r:
+            if line.strip():
+                chunk = json.loads(line)
+                full += chunk.get("response", "")
+                if chunk.get("done"):
+                    break
+    return full
+```
+
+`stream=True`면 Ollama가 토큰을 생성할 때마다 한 줄씩 JSON을 흘려보냅니다.
+
+```json
+{"model":"qwen2.5:14b","response":"{\n","done":false}
+{"model":"qwen2.5:14b","response":"  \"date\"","done":false}
+...
+{"model":"qwen2.5:14b","response":"","done":true}
+```
+
+HTTP 연결은 계속 살아있고, 데이터가 조금씩 오니까 timeout이 안 걸립니다. `timeout=600`은 각 `readline()`의 대기시간이지, 전체 응답 시간이 아닙니다.
+
+결과: **9,718자 JSON 완전 수신, 파싱 성공.**
+
+---
+
+## JSON 파싱: Ollama가 형식을 안 지킬 때
+
+LLM이 항상 깔끔한 JSON만 뱉지는 않습니다. 앞뒤에 텍스트가 붙거나, 마크다운 코드블록으로 감싸기도 합니다.
+
+```python
+def extract_json(text: str) -> dict:
+    # 1순위: ```json ... ``` 블록
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if m:
+        return json.loads(m.group(1))
+    # 2순위: 첫 번째 { ... } 찾기
+    m = re.search(r"(\{.*\})", text, re.DOTALL)
+    if m:
+        return json.loads(m.group(1))
+    raise ValueError("JSON 파싱 실패")
+```
+
+---
+
+## TradingView URL 자동 생성
+
+Ollama가 URL을 빠뜨릴 때를 대비해서 자동으로 채워줍니다.
+
+```python
+def tradingview_url(ticker: str, exchange: str) -> str:
+    ex = exchange.upper()
+    if ex in ("KRX", "KOSPI", "KOSDAQ"):
+        return f"https://www.tradingview.com/chart/?symbol=KRX:{ticker}"
+    elif ex == "NASDAQ":
+        return f"https://www.tradingview.com/chart/?symbol=NASDAQ:{ticker}"
+    elif ex == "NYSE":
+        return f"https://www.tradingview.com/chart/?symbol=NYSE:{ticker}"
+    ...
+
+# 빠진 URL 자동 채우기
+for p in report.get("us_picks", []):
+    if not p.get("tradingview"):
+        p["tradingview"] = tradingview_url(p.get("ticker",""), p.get("exchange","NASDAQ"))
+```
+
+프론트엔드에서도 `pick.exchange`를 쓰도록 수정했습니다. 하드코딩 `NASDAQ:`으로 하면 NYSE 종목 차트가 틀려서요.
+
+---
+
+## LaunchAgent 등록
+
+맥미니에서 매일 자동 실행합니다.
+
+```xml
+<!-- com.shud.economynews.plist — 08:00 PDT 뉴스 수집 -->
+<key>StartCalendarInterval</key>
+<dict>
+  <key>Hour</key><integer>8</integer>
+  <key>Minute</key><integer>0</integer>
+</dict>
+
+<!-- com.shud.stockreport.plist — 09:00 PDT 분석 -->
+<key>StartCalendarInterval</key>
+<dict>
+  <key>Hour</key><integer>9</integer>
+  <key>Minute</key><integer>0</integer>
+</dict>
+```
+
+뉴스 수집 → 1시간 후 분석. 뉴스 파일이 없으면 `sys.exit(1)`로 종료합니다.
+
+---
+
+## 실제 결과
+
+```
+[stock_report] 뉴스 로드: 17,445자
+[stock_report] Ollama(qwen2.5:14b) 분석 중...
+[stock_report] 응답: 9,718자
+[stock_report] JSON 저장: data/reports/2026-04-26.json
+[stock_report] Obsidian 저장 완료
+[stock_report] git push 중...
+  ✓ push origin main
+[stock_report] 완료!
+```
+
+Vercel 자동배포까지 완료.
+
+---
+
+## 요약
+
+| 항목 | 내용 |
+|------|------|
+| LLM | Ollama qwen2.5:14b (로컬, 무료) |
+| 입력 | RSS 뉴스 6,000자 |
+| 출력 | 4,000토큰 (KR 6종목 + US 4종목) |
+| 핵심 | `stream=True` — timeout 없이 긴 출력 받기 |
+| 비용 | $0 (Ollama 로컬) |
+| 스케줄 | LaunchAgent 매일 자동 |
+
+Claude API 쓰면 편하지만, 매일 반복 작업은 로컬 LLM이 훨씬 낫습니다. 한 번 세팅해두면 돈 걱정 없이 돌아가니까요.
