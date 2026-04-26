@@ -1,0 +1,117 @@
+---
+title: 봇이 $30 날렸다 — WAIT_MINUTES 하나가 없어서
+description: NameError 하나 고쳤더니 봇이 갑자기 매수를 시작했다. 필터가 너무 낮았고, 텔레그램은 끊겨있었고, 지갑에서 $30이 빠져나갔다.
+date: 2026-04-26
+series: 봇운영인프라
+seriesOrder: 22
+tags: [솔라나, 자동매매, 봇, 버그수정, 문백]
+---
+
+오늘 Printr 솔라나 뱅어봇이 사고를 쳤다.
+
+## 발단
+
+봇이 텔레그램 알림을 안 보내고 있었다. 돌아가긴 하는데 아무 메시지가 없으니 뭘 하는지 모르는 상태.
+
+로그 보니까 이랬다.
+
+```
+Traceback (most recent call last):
+  File "printr_sol_bot.py", line 286, in process_new_token
+    f"⏳ TX 파싱 중... ({WAIT_MINUTES}분 후 필터)\n"
+NameError: name 'WAIT_MINUTES' is not defined
+```
+
+`WAIT_MINUTES` 변수가 코드에서 쓰이는데 선언이 없었다. 그래서 `process_new_token()`이 호출될 때마다 바로 크래시. 토큰 감지는 됐지만 처리가 아예 안 된 거다.
+
+수정은 간단했다.
+
+```python
+SELL_CHECK_SECS  = 30
+WAIT_MINUTES     = 5   # 이거 추가
+```
+
+그런데 이게 문제의 시작이었다.
+
+## 사고
+
+`WAIT_MINUTES`를 추가하고 봇을 재시작했다. 그 전까지는 모든 토큰 처리가 크래시로 끝났는데, 이제 정상적으로 돌아가기 시작했다.
+
+5분 대기 → 스코어링 → 필터 통과 → 매수.
+
+근데 필터가 `MIN_SCORE = 30`이었다. 이게 생각보다 너무 쉽게 통과된다.
+
+발행자 지갑 tx 100건 이상이면 바로 +30점. 거기에 SOL 잔고 0.5 이상이면 +20점. 홀더 5명 이상이면 +10점. 합산 60점인데 기준이 30점이니 거의 전부 통과한다.
+
+설상가상으로 텔레그램이 끊겨있었다. `send_msg()`가 response를 제대로 닫지 않아서 연결 에러가 반복됐다.
+
+```python
+# 문제있는 코드
+await s.post(url, json={...}, timeout=...)  # response 안 닫음
+
+# 수정
+async with s.post(url, json={...}) as r:
+    if r.status != 200:
+        body = await r.text()
+        print(f"[텔레그램 에러] HTTP {r.status} — {body}")
+```
+
+매수가 일어나고 있었는데 텔레그램 알림이 안 오니까 알 수가 없었다. 지갑에서 $30이 빠져나간 걸 나중에 확인했다.
+
+## 수습
+
+봇을 즉시 종료했다.
+
+```bash
+launchctl stop com.shud.printrsolbot
+launchctl unload ~/Library/LaunchAgents/com.shud.printrsolbot.plist
+```
+
+LaunchAgent로 등록돼있어서 `kill`만으론 자동 재시작된다. `unload`까지 해야 완전히 멈춘다.
+
+## v4로 수정
+
+파라미터를 전면 조정했다.
+
+```python
+BUY_AMOUNT_SOL = 0.02     # 0.05 → 0.02 (토큰당 ~$3)
+MIN_SCORE      = 60        # 30 → 60 (필터 강화)
+WAIT_MINUTES   = 3         # 5 → 3 (너무 늦으면 이미 고점)
+```
+
+필터 60점이면 활성 지갑 + SOL 잔고 + 홀더 어느 정도 있어야 통과한다.
+
+## 문백 로직 추가
+
+어차피 밈코인 스나이퍼에서 +200% 익절은 가능성이 낮다. 그래서 전량 매도 대신 절반만 팔고 나머지는 무기한 홀딩하는 "문백" 전략으로 바꿨다.
+
+```python
+MOONBAG_STOP = -80.0  # 문백 손절선
+
+async def monitor_sell_user(...):
+    moonbag = False
+
+    while True:
+        ...
+        if not moonbag:
+            if pnl >= TAKE_PROFIT_PCT:   # +200%
+                # 절반만 매도
+                half = amount // 2
+                tx = await jup_swap(jup_quote(mint, WSOL, half), pk)
+                moonbag = True
+                # "🌙 절반 익절! 문백 진입" 알림
+            elif pnl <= STOP_LOSS_PCT:   # -60%
+                # 전량 손절
+            elif elapsed >= MAX_HOLD_MINUTES:  # 30분
+                # 전량 강제청산
+        else:
+            # 문백 모드: 강제청산 없음, -80%만 감시
+            if pnl <= MOONBAG_STOP:
+                # 전량 손절
+```
+
++200% 도달하면 절반 회수해서 원금 복구에 가까워지고, 나머지 절반은 10배, 100배 갈 가능성에 베팅한다. 문백이 -80% 가면 그때 정리.
+
+---
+
+NameError 하나가 $30짜리 사고로 이어졌다. 봇을 새로 켤 땐 텔레그램 알림이 먼저 오는지 확인하고, 필터 기준을 실제로 몇 개가 통과하는지 시뮬레이션해보고 올려야 한다.
