@@ -1,0 +1,99 @@
+---
+title: Web3 nonce too low — Approve 직후 swap 트랜잭션이 왜 실패하나
+description: Base 볼륨 봇이 Approve는 성공했는데 swap에서 'nonce too low' 에러로 크래시났다. Approve와 swap이 nonce를 따로 조회하는 게 문제였다.
+date: 2026-04-26
+series: 봇운영인프라
+seriesOrder: 20
+tags: [Web3, Base, Aerodrome, nonce, 버그수정]
+---
+
+Base 체인에서 볼륨을 쌓는 봇이 오늘 크래시났다.
+
+```
+[14:23:17]   [1/11] USDC→USDT $69 → f6284aa9955b964f...
+[14:23:18]   ✅ 성공 (gas: 287638)
+[14:23:18]   → 127초 대기...
+[14:25:26]   Approve 중...
+[14:25:27]   Approve 완료
+Traceback (most recent call last):
+  ...
+web3.exceptions.Web3RPCError: {'code': -32000,
+  'message': 'nonce too low: next nonce 42, tx nonce 41'}
+```
+
+Approve는 성공했는데, 바로 다음 swap 트랜잭션에서 `nonce too low`가 터졌다.
+
+## nonce가 뭔가
+
+이더리움 계열 체인에서 각 트랜잭션은 순서대로 번호를 달아야 한다. 이게 nonce다. 지갑이 보낸 41번째 트랜잭션이라면 nonce는 40 (0부터 시작).
+
+nonce가 이미 사용한 번호보다 낮으면 노드가 거절한다. "그 번호 이미 썼는데?"
+
+## 문제
+
+코드 구조가 이랬다.
+
+```python
+def ensure_approval(w3, account, token_addr, spender, amount_raw):
+    # ...
+    tx = token.functions.approve(...).build_transaction({
+        "nonce": w3.eth.get_transaction_count(wallet, 'pending'),  # nonce 41
+        ...
+    })
+    signed = w3.eth.account.sign_transaction(tx, account["private_key"])
+    tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+    w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
+    # Approve 완료 — nonce 41 소비됨
+
+
+def do_swap(w3, account, ...):
+    ensure_approval(w3, account, ...)  # Approve 완료
+
+    tx = router.functions.swapExactTokensForTokens(...).build_transaction({
+        "nonce": w3.eth.get_transaction_count(wallet, 'pending'),  # 여기서 다시 조회
+        ...
+    })
+```
+
+Approve가 nonce 41을 쓰고 확정됐다. 다음 트랜잭션은 42를 써야 한다.
+
+그런데 `do_swap`에서 nonce를 **다시 RPC에 조회**했다. Approve가 막 확정된 직후라 RPC 노드가 아직 상태를 갱신 못 한 상태였고, 결과로 41을 돌려줬다.
+
+41은 이미 썼다. `nonce too low`.
+
+## 수정
+
+Approve 완료 후 잠깐 기다리면 RPC가 따라잡는다.
+
+```python
+def ensure_approval(w3, account, token_addr, spender, amount_raw):
+    # ...
+    w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
+    log(f"  Approve 완료")
+    time.sleep(2)  # RPC 동기화 대기
+```
+
+2초면 충분하다. 이후 `get_transaction_count`를 호출하면 42를 반환한다.
+
+## 더 확실한 방법
+
+nonce를 한 번만 읽고 직접 관리하는 것도 방법이다.
+
+```python
+nonce = w3.eth.get_transaction_count(wallet, 'pending')
+
+# Approve 트랜잭션
+approve_tx = {..., "nonce": nonce}
+w3.eth.send_raw_transaction(sign(approve_tx))
+w3.eth.wait_for_transaction_receipt(...)
+
+# swap 트랜잭션 — nonce를 직접 +1
+swap_tx = {..., "nonce": nonce + 1}
+w3.eth.send_raw_transaction(sign(swap_tx))
+```
+
+RPC 조회 없이 직접 증가시키면 타이밍 문제가 없다. 다만 중간에 다른 트랜잭션이 끼어들 수 없는 구조일 때만 안전하다.
+
+---
+
+이번 케이스는 `time.sleep(2)` 하나로 해결했다. 내일 LaunchAgent가 재시작하면 확인할 예정.

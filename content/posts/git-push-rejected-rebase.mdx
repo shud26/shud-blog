@@ -1,0 +1,71 @@
+---
+title: git push가 rejected됐다 — remote ahead 상태에서 push하는 법
+description: 자동화 스크립트가 git push를 실패했다. remote에 커밋이 먼저 올라간 상태였다. pull --rebase 한 줄로 해결.
+date: 2026-04-26
+series: 봇운영인프라
+seriesOrder: 19
+tags: [git, 자동화, LaunchAgent, stockpick26]
+---
+
+맥미니에서 돌아가는 stock_report.py가 오늘 git push를 실패했다.
+
+로그를 보니 이랬다.
+
+```
+[stock_report] git 에러: push origin main
+failed to store: -25308
+To https://github.com/shud26/stockpick26.git
+ ! [rejected]        main -> main (fetch first)
+error: failed to push some refs to 'https://github.com/shud26/stockpick26.git'
+hint: Updates were rejected because the remote contains work that you
+hint: do not have locally.
+```
+
+remote에 내가 로컬에 없는 커밋이 먼저 올라가 있었다.
+
+## 왜 이런 일이 생겼냐면
+
+스크립트가 JSON 파일을 생성하고 push하는 구조다. 그런데 그 사이에 맥북에서 직접 커밋을 하나 올렸다. 맥미니 로컬은 그걸 모르는 상태.
+
+맥미니 입장에서는 자기 커밋이 최신인 줄 알고 push를 시도한다. remote는 "내 커밋이 더 앞에 있는데?" 하고 거절한다.
+
+## 해결
+
+```bash
+cd /Users/shud/stockpick26
+git pull --rebase origin main
+git push origin main
+```
+
+`--rebase`를 쓰면 remote 커밋을 먼저 받아오고, 내 커밋을 그 위에 올린다. merge 커밋 없이 깔끔하게 정리된다.
+
+```
+From https://github.com/shud26/stockpick26
+ * branch            main       -> FETCH_HEAD
+   37a6d62..341fecd  main       -> origin/main
+Rebasing (1/1)
+Successfully rebased and updated refs/heads/main.
+To https://github.com/shud26/stockpick26.git
+   341fecd..edd9006  main -> main
+```
+
+push 성공.
+
+## 스크립트에 반영
+
+자동화 스크립트라면 push 전에 항상 rebase를 먼저 하는 게 낫다.
+
+```python
+def git_push_all(date: str, files: list[str]):
+    subprocess.run(["git", "add"] + files, cwd=REPO_DIR)
+    subprocess.run(["git", "commit", "-m", f"📊 {date} 자동 업로드"], cwd=REPO_DIR)
+    # pull --rebase 먼저
+    subprocess.run(["git", "pull", "--rebase", "origin", "main"], cwd=REPO_DIR)
+    subprocess.run(["git", "push", "origin", "main"], cwd=REPO_DIR)
+```
+
+여러 곳에서 같은 repo에 커밋할 수 있는 상황이면 이 순서를 지켜야 한다.
+
+---
+
+참고로 로그에 보이는 `failed to store: -25308`은 macOS keychain 관련 경고다. push 자체에는 영향 없다. 무시해도 된다.

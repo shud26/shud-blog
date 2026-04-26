@@ -1,0 +1,122 @@
+---
+title: 페이지를 두 개로 쪼갰다 — 뉴스 요약과 종목 추천을 분리한 이유
+description: stockpick26에서 뉴스 요약과 종목 추천이 한 페이지에 다 들어있었다. Ollama 호출을 두 번으로 나누고, 페이지도 /news와 /daily로 분리했다.
+date: 2026-04-26
+series: 봇운영인프라
+seriesOrder: 21
+tags: [stockpick26, Next.js, Ollama, 자동화, SSG]
+---
+
+stockpick26 자동화 파이프라인을 뜯어고쳤다.
+
+기존엔 Ollama가 한 번에 뉴스 요약 + 종목 추천을 같이 생성했다. 문제가 두 가지였다.
+
+1. 프롬프트가 너무 길어져서 JSON이 중간에 잘리는 경우가 생겼다
+2. 뉴스 요약과 종목 추천은 성격이 달라서 한 페이지에 넣으면 어색했다
+
+그래서 Ollama 호출을 둘로 나누고, 페이지도 분리했다.
+
+## 구조 변경
+
+**이전**
+```
+stock_report.py
+  → Ollama 1회 호출 (뉴스 + 종목 동시)
+  → data/reports/YYYY-MM-DD.json
+  → /daily/[date] 페이지 하나
+```
+
+**이후**
+```
+stock_report.py
+  → Ollama 1차 호출 (뉴스 요약)  → data/news/YYYY-MM-DD.json
+  → Ollama 2차 호출 (종목 추천)  → data/reports/YYYY-MM-DD.json
+  → /news/[date]   뉴스 요약 페이지
+  → /daily/[date]  종목 추천 페이지
+```
+
+뉴스 요약 결과를 2차 프롬프트의 컨텍스트로 넘긴다. 종목 추천이 당일 뉴스를 바탕으로 나오게.
+
+## Ollama 호출 두 번
+
+```python
+# 1차: 뉴스 요약
+news_prompt = build_news_prompt(raw_news)
+news_json = call_ollama(news_prompt)
+save_json(news_json, NEWS_DIR / f"{date}.json")
+
+# 2차: 종목 추천 (뉴스 요약을 컨텍스트로)
+news_summary = json.dumps(news_json, ensure_ascii=False)
+picks_prompt = build_picks_prompt(raw_news, news_summary)
+picks_json = call_ollama(picks_prompt)
+save_json(picks_json, REPORTS_DIR / f"{date}.json")
+```
+
+각각 `num_predict=5000`을 주고, `stream=True`로 호출한다. 맥미니 M2에서 두 번 합쳐 15~20분 걸린다.
+
+## JSON 구조 분리
+
+뉴스 JSON에는 시장 전반 내용만 담는다.
+
+```json
+{
+  "date": "2026-04-26",
+  "headline": "...",
+  "sentiment": "bearish",
+  "fear_greed": "공포 지수 38",
+  "market_overview": "...",
+  "key_themes": [...],
+  "kr_headlines": [...],
+  "us_headlines": [...],
+  "conclusion": "..."
+}
+```
+
+종목 JSON에는 픽만 담는다.
+
+```json
+{
+  "date": "2026-04-26",
+  "kr_picks": [
+    {"name": "삼성전자", "ticker": "005930", "exchange": "KRX", ...}
+  ],
+  "us_picks": [
+    {"name": "NVIDIA", "ticker": "NVDA", "exchange": "NASDAQ", ...}
+  ]
+}
+```
+
+## 페이지 분리
+
+`/news/[date]`는 뉴스 요약 페이지다. 시장 분위기, 핵심 테마, 국내외 헤드라인, 총평 순서로 보여준다.
+
+`/daily/[date]`는 종목 추천 페이지다. 뉴스 페이지로 가는 링크가 상단에 있다.
+
+두 페이지 모두 `generateStaticParams`로 SSG 처리한다.
+
+```typescript
+// app/news/[date]/page.tsx
+export async function generateStaticParams() {
+  return getAllNewsDates().map(date => ({ date }));
+}
+```
+
+새 JSON 파일이 추가될 때마다 Vercel에서 재빌드가 필요하다. git push가 트리거가 된다.
+
+## TradingView URL 버그도 잡았다
+
+종목 추천 페이지에서 차트 링크가 틀리는 경우가 있었다.
+
+```typescript
+// 기존 — NYSE 종목도 NASDAQ으로 고정
+href={`https://www.tradingview.com/chart/?symbol=NASDAQ:${pick.ticker}`}
+
+// 수정 — exchange 필드 사용
+href={`https://www.tradingview.com/chart/?symbol=${pick.exchange || 'NASDAQ'}:${pick.ticker}`}
+```
+
+JPM, XOM 같은 NYSE 종목이 NASDAQ 차트로 연결되던 문제가 사라졌다.
+
+---
+
+분리하고 나니 각 페이지가 훨씬 깔끔해졌다. 뉴스 요약은 뉴스 요약대로, 종목 추천은 종목 추천대로. Ollama 프롬프트도 짧아져서 JSON 잘림 현상도 없어졌다.
