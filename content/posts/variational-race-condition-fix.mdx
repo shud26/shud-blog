@@ -1,0 +1,160 @@
+---
+title: 봇이 일을 안 한다고 생각했는데, 사실 코드 버그였다 — race condition 디버깅
+description: Variational 핑퐁봇이 오더만 걸어두고 거래를 안 하는 것 같았다. 로그를 파고들었더니 체결 감지 코드에 숨어있는 race condition이 원인이었다.
+date: 2026-04-26
+tags: [봇운영, 디버깅, Python, 핑퐁봇, Variational]
+seriesOrder: 18
+---
+
+오늘 아침에 Variational 핑퐁봇을 열었더니 이상했다.
+
+양쪽 계정 모두 SELL 주문만 $78,200대에 걸려 있고, BUY 주문이 하나도 없었다. BTC 가격은 $77,535. 팔자 주문이 $700 위에 있으니 체결될 리가 없었다. 봇은 계속 사이클을 돌고 있었는데 — 아무 일도 안 일어났다.
+
+"봇이 일을 안 하네."
+
+근데 사실 그 판단이 틀렸다.
+
+---
+
+## 상태 파일을 열어봤다
+
+```json
+"Account2": {
+  "open_orders": [
+    {"price": 78217.2, "is_buy": false}
+  ],
+  "last_fill_side": "sell",
+  "fills": [
+    ...
+    {"price": 78215.8, "is_buy": false, "time": "2026-04-25T01:00:05"}
+  ]
+}
+```
+
+Account2의 마지막 체결은 어젯밤 1시 SELL $78,215.8이었다. 핑퐁 로직상 SELL 체결 후에는 BUY 카운터 주문을 걸어야 한다. 계산하면 $78,215.8 × (1 - 0.006) = **$77,747** 근처에 BUY가 떠있어야 했다.
+
+근데 state에는 BUY가 없었다. SELL $78,217.2만 있었다.
+
+로그 파일을 열었다.
+
+```
+{"time": "2026-04-25T01:00:05", "type": "fill", "label": "Account2", "price": 78215.8}
+```
+
+그게 마지막이었다. 그 이후 아무 이벤트도 없었다.
+
+---
+
+## 코드를 뜯어봤다
+
+`check_fills()` 함수가 체결을 감지하고 카운터 주문을 배치하는 역할을 한다. 대략 이렇게 생겼다.
+
+```python
+def check_fills(client):
+    # 1. API에서 현재 오픈 주문 가져오기
+    current_orders = client.get_open_orders()
+    current_rfq_ids = {o["rfq_id"] for o in current_orders}
+
+    # 2. state에 있던 주문 중 사라진 것 = 체결
+    prev_orders = astate.get("open_orders", [])
+    disappeared = [o for o in prev_orders if o["rfq_id"] not in current_rfq_ids]
+
+    for order in disappeared:
+        # 3. 체결 기록, 카운터 주문 배치
+        place_counter_order(client, order["price"], order["is_buy"])
+
+    # 4. open_orders를 현재 API 응답으로 덮어쓰기
+    astate["open_orders"] = [... for o in current_orders]
+    save_state()
+```
+
+얼핏 보면 멀쩡하다. 근데 4번이 문제였다.
+
+`place_counter_order()`는 새 주문을 exchange에 올리고, `astate["open_orders"]`에 append한다. 그런데 함수가 끝나면 곧바로 **함수 시작 시점에 찍어둔 API 스냅샷으로 덮어쓴다.**
+
+시작할 때 찍은 스냅샷에는 방금 배치한 카운터 주문이 없다. exchange에 주문은 올라갔지만 state에서는 사라진다.
+
+---
+
+## 왜 그게 문제냐면
+
+다음 사이클(30초 후)에 봇이 체결을 감지하려면 `astate["open_orders"]`에 주문이 기록되어 있어야 한다. 주문이 state에 없으면 "사라진 주문 = 체결"을 인식할 수가 없다.
+
+Account2의 경우:
+1. SELL $78,215.8 체결 (01:00)
+2. BUY 카운터 $77,747 배치 → exchange에 올라감
+3. 그런데 BTC가 이미 $77,535. BUY 리밋이 $77,747이니까 **즉시 체결**
+4. 30초 뒤 다음 사이클: state에 BUY 기록 없음 → API에서도 사라짐 → 체결 감지 불가
+5. 카운터 SELL 안 배치됨
+6. 남은 건 처음 페어로 깔린 SELL $78,217.2 하나뿐
+
+카운터 주문이 너무 빨리 체결되면 추적을 놓치는 구조였다.
+
+---
+
+## 수정
+
+해결책은 간단했다. 마지막 덮어쓰기 전에, 방금 배치한 주문을 따로 챙겨두고 API 응답에 없는 것들은 끼워 넣으면 된다.
+
+```python
+# 방금 추가된 주문 추려내기
+prev_rfq_ids = {o["rfq_id"] for o in prev_orders}
+newly_placed = [
+    o for o in astate.get("open_orders", [])
+    if o["rfq_id"] not in prev_rfq_ids
+]
+
+# API 기반으로 동기화
+api_orders = [... for o in current_orders]
+api_rfq_set = {o["rfq_id"] for o in api_orders}
+
+# API에 아직 안 뜬 신규 주문도 state에 유지
+for order in newly_placed:
+    if order["rfq_id"] not in api_rfq_set:
+        api_orders.append(order)
+
+astate["open_orders"] = api_orders
+save_state()
+```
+
+API 응답에 아직 없더라도(전파 지연), 방금 직접 배치한 주문은 state에 살려둔다. 다음 사이클에서 정상 추적된다.
+
+---
+
+## 봇을 재시작했더니
+
+수정 후 재시작하자마자 뭔가 일이 일어났다.
+
+봇이 오래된 state를 보고 "SELL $78,238이 사라졌네 → 체결됐구나"를 뒤늦게 감지했다. 알고 보니 BTC가 $78,200대로 올라가 있었고, 우리가 그 사이에 체결된 걸 못 잡고 있었던 거다.
+
+```
+✅ [Account1] SELL 체결 $78,238.1 × 0.001 BTC
+✅ [Account1] SELL 체결 $78,239.5 × 0.001 BTC
+⚠️ [Account1] 원웨이 감지! 2x SELL 연속 → 30분 대기
+```
+
+연속 SELL 2회라 원웨이 감지가 발동해서 30분 쿨다운 들어갔지만, 그건 정상 동작이다. 30분 후 BTC 현재가 기준으로 새 페어가 깔렸다.
+
+---
+
+## 오늘 체크한 것들
+
+봇 전체를 돌아봤다.
+
+**Nado Grid**: BTC PnL +$83 / 46 라운드트립. ETH는 소폭 마이너스지만 오늘 3회 체결하면서 회복 중. 정상.
+
+**Claw Bot**: 어젯밤 Telegram 409 충돌 에러가 잠깐 났다가 자연 해소됨. 프로세스 하나만 살아있는 거 확인.
+
+**Base Farm**: nonce 에러로 크래시. Approve 트랜잭션이 확정된 직후 스왑 트랜잭션 nonce를 바로 조회하면 RPC가 아직 반영 안 된 상태라 nonce가 겹친다. Approve 완료 후 `time.sleep(2)` 하나 넣어서 수정. 내일 재시도 예정.
+
+---
+
+## 배운 것
+
+race condition은 코드가 단순해 보일수록 더 잘 숨는다.
+
+`check_fills()`는 딱 봐도 논리가 맞아 보였다. API 긁고, 비교하고, 덮어쓰고. 근데 "덮어쓰기 직전에 방금 내가 추가한 게 있다"는 걸 놓쳤다.
+
+이런 버그는 대부분의 경우엔 안 터진다. 카운터 주문이 30초 안에 즉시 체결될 만큼 가격이 딱 그 자리에 있을 때만 발생한다. 그래서 테스트로는 못 잡는다. 실전에서 BTC가 쭉 내려가던 타이밍에 조용히 발생했고, 아무도 모르고 지나칠 수 있었다.
+
+로그를 보는 습관이 버그를 잡았다. 이벤트가 있어야 할 자리에 없는 것, 그게 단서였다.
