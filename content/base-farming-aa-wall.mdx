@@ -1,0 +1,131 @@
+---
+title: Base 파밍 자동화 도전기 — ERC-4337 벽에 막히다
+description: Base 앱 인앱 스왑 자동화를 시도하다 Account Abstraction 구조를 발견한 삽질 기록입니다. web3.py, iPhone Mirroring, Aerodrome 직접 호출까지 세 가지 방법을 시도한 과정을 정리했습니다.
+date: 2026-04-24
+series: 봇운영인프라
+seriesOrder: 8
+tags: [Base, 에어드랍, Aerodrome, web3py, AccountAbstraction, ERC4337]
+---
+
+> 이 글은 개인 운영 기록이며 투자 조언이 아닙니다. 크립토 거래는 원금 손실 위험이 있습니다.
+
+Base 앱 에어드랍 파밍 블로그를 보고 자동화해보려 했습니다. 결론부터 말하면 3시간을 돌아서 원점에 돌아왔습니다.
+
+---
+
+## 파밍 전략 개요
+
+Base 재단이 dashboard.base.org 레더보드를 공개하면서 유저 온체인 활동이 사후 인센티브 배정 기준이 될 가능성이 높아졌습니다. 집계 지표는 세 가지입니다.
+
+- 트랜잭션 수
+- 스왑 볼륨
+- 활동 지속 일수
+
+이 중 스왑은 트랜잭션 수와 볼륨을 동시에 쌓을 수 있는 몇 안 되는 활동입니다. 그리고 Base 앱 인앱 스왑은 수수료가 0%입니다.
+
+블로그에서 소개된 전략은 이렇습니다.
+
+```
+STEP 1: Aerodrome에서 USDC → USDT (수수료 발생)
+STEP 2: Base 앱 인앱 스왑으로 USDT → USDC (수수료 0%)
+STEP 3: 반복
+```
+
+$100 단위로 500회 반복하면 $10만 볼륨, 총 수수료 약 $25입니다.
+
+---
+
+## 시도 1: iPhone Mirroring + PyAutoGUI
+
+처음엔 맥북에서 iPhone Mirroring으로 아이폰 화면을 제어하는 방법을 시도했습니다. PyAutoGUI로 좌표를 찍어 스왑 확인 버튼을 자동으로 누르는 방식입니다.
+
+```python
+import pyautogui, time
+
+SWAP_BTN = (831, 853)
+PIN = "2605"
+
+for i in range(100):
+    pyautogui.click(*SWAP_BTN)
+    time.sleep(0.8)
+    pyautogui.typewrite(PIN, interval=0.15)
+    time.sleep(8)  # 트랜잭션 완료 대기
+```
+
+문제가 있었습니다. 스왑마다 PIN이 요구되는 건 감수할 수 있었지만, 금액 설정과 방향 전환(USDC→USDT / USDT→USDC)을 수동으로 해야 했습니다. 반자동이지 완전 자동화가 아니었습니다.
+
+---
+
+## 시도 2: web3.py로 Aerodrome 직접 호출
+
+"Base 앱 인앱 스왑이랑 Aerodrome 직접 호출이랑 온체인에선 같은 결과 아닌가?"라는 판단 하에 web3.py로 전환했습니다.
+
+```python
+from web3 import Web3
+
+AERODROME_ROUTER = "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43"
+AERO_FACTORY     = "0x420DD381b31aEf6683db6B902084cB0FFECe40Da"
+USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+USDT = "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2"
+
+route = [{"from": USDC, "to": USDT, "stable": True, "factory": AERO_FACTORY}]
+router.functions.swapExactTokensForTokens(
+    amount_in, amount_out_min, route, wallet, deadline
+).build_transaction({...})
+```
+
+테스트해보니 작동했습니다. 그런데 한 가지 중요한 사실을 발견했습니다.
+
+**Aerodrome은 스왑 금액에 따라 슬리피지가 급격히 달라집니다.**
+
+| 스왑 금액 | 수수료 | 비율 |
+|---------|--------|------|
+| $100 | $0.05 | 0.05% |
+| $500 | $2.20 | 0.44% |
+| $1,000 | $38.40 | **3.84%** |
+
+$1,000 단위로 스왑하면 수수료만 $38이 나옵니다. 풀 유동성이 얕아서 생기는 슬리피지입니다. **반드시 $100 이하 소액 단위**로 해야 합니다.
+
+---
+
+## 핵심 발견: Base 앱 인앱 스왑은 ERC-4337
+
+"그러면 Base 앱 인앱 스왑도 Aerodrome을 쓰는 거 아닌가? 수수료 0%는 어떻게 가능한가?" 궁금해서 Blockscout로 실제 트랜잭션을 까봤습니다.
+
+```
+컨트랙트: 0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789
+method:   handleOps
+```
+
+`0x5FF137D4...`는 **ERC-4337 EntryPoint** 주소입니다. Base 앱 인앱 스왑은 일반 EOA 트랜잭션이 아니라 **Account Abstraction(AA)** 구조로 작동합니다.
+
+AA의 특징:
+- 번들러(Bundler)가 여러 UserOperation을 묶어서 처리
+- Paymaster가 가스비를 대납 → 유저 입장에서 수수료 0%
+- EOA 개인키로 직접 컨트랙트 호출 불가
+
+결과적으로 web3.py로는 Base 앱 인앱 스왑을 복제할 수 없습니다. AA 번들러와 paymaster 연동이 필요하기 때문입니다.
+
+---
+
+## 현재 선택지
+
+| 방법 | 수수료 | 자동화 |
+|------|--------|--------|
+| Aerodrome 양방향 ($100 단위) | ~$53 / $10만 볼륨 | ✅ 완전 자동 |
+| Aerodrome 편도 + Base 앱 인앱 | ~$25 / $10만 볼륨 | ⚠️ 인앱은 수동 |
+
+수수료 $28 차이를 위해 수동 작업을 감수할지, 아니면 Aerodrome 양방향으로 완전 자동화할지 선택의 문제입니다.
+
+현재 코드는 `/Users/hun/base_volume_bot.py`에 있습니다. `SWAP_AMOUNT_USD = 100` 설정 후 실행하면 3개 계정 순환으로 작동합니다.
+
+---
+
+## 정리
+
+Base 앱 인앱 스왑 자동화를 시도하면서 ERC-4337 AA 구조를 직접 확인했습니다. 온체인을 뜯어보지 않았다면 몰랐을 내용입니다. 삽질이 헛되진 않았다고 생각합니다.
+
+핵심 교훈:
+- Base 앱 인앱 스왑 = AA 구조, web3.py로 직접 복제 불가
+- Aerodrome 슬리피지는 $100 이하 소액에서만 0.05% 수준
+- 완전 자동화를 원한다면 Aerodrome 양방향, 비용 절감을 원한다면 인앱 스왑 병행
