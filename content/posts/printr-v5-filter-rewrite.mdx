@@ -1,0 +1,146 @@
+---
+title: 뱅어봇 v5 — 스코어링을 갈아엎었다
+description: $30 사고 이후 필터 로직을 처음부터 다시 설계했다. LP 크기, 번들봇 감지, Dev 보유량. 조작할 수 없는 신호만 남겼다.
+date: 2026-04-27
+series: 봇운영인프라
+seriesOrder: 23
+tags: [솔라나, 자동매매, 봇, 필터링, v5]
+---
+
+v4에서 $30 날린 다음날, 스코어링 로직을 처음부터 다시 썼다.
+
+v4 필터의 문제는 파라미터가 아니었다. 신호 자체가 틀렸다.
+
+## v4 스코어링의 구조적 결함
+
+v4는 이런 기준으로 토큰을 평가했다.
+
+```python
+# 발행자 지갑 tx 수 → +10~30점
+# 발행자 SOL 잔고 → +10~20점
+# 런칭 후 거래량 → +5~10점
+```
+
+문제는 이게 전부 **조작 가능한 지표**라는 거다.
+
+발행자 지갑 tx 100건은 미리 만들어두면 된다. SOL 잔고 0.5 이상도 0.05 SOL만 있으면 셋업 가능하다. 런칭 후 거래량은 자전거래로 만들 수 있다. 스캠 토큰 개발자 입장에선 필터 통과용 지갑 하나 셋업하는 게 어렵지 않다.
+
+필터가 있는데 쓰레기가 통과되는 이유가 이거였다.
+
+## 진짜 신호 3가지
+
+4명이서 전략을 토론했다. 각자 다른 방향을 제시했는데, 공통적으로 나온 결론이 하나 있었다.
+
+**조작이 불가능하거나 비용이 매우 큰 신호만 써야 한다.**
+
+### 1. 초기 LP 크기
+
+토큰이 런칭될 때 풀에 들어가는 SOL의 양이다. 이건 런칭 트랜잭션 자체에 담겨있고, 나중에 바꿀 수 없다.
+
+LP가 작으면 어떻게 되냐면 — 내가 0.02 SOL만 넣어도 가격이 크게 움직인다. 즉, 내가 사는 순간 내 매수가 슬리피지를 만들고, 팔려고 할 때는 이미 유동성이 없어서 팔 수가 없다.
+
+5 SOL 미만이면 즉시 탈락이다.
+
+```python
+MIN_POOL_SOL = 5.0
+
+if pool_sol < MIN_POOL_SOL:
+    return -999, [f"❌ LP 부족 ({pool_sol:.2f} SOL, 최소 {MIN_POOL_SOL} SOL)"]
+```
+
+### 2. 번들봇 감지
+
+런칭 블록과 동일한 slot에서 매수한 지갑이 몇 개인지 센다. 번들봇은 런칭과 동시에 같은 블록에 여러 지갑으로 진입해서 물량을 쓸어담는다. 그러고 나서 리테일이 들어오면 판다.
+
+```python
+sig_data = await rpc("getSignaturesForAddress", [mint, {"limit": 30}])
+sigs = sig_data.get("result", [])
+launch_slot = sigs[-1].get("slot", 0) if sigs else 0
+bundle_count = sum(1 for s in sigs if s.get("slot") == launch_slot)
+
+if bundle_count >= MAX_BUNDLE_BUYS:  # 3개 이상
+    return -999, [f"❌ 번들봇 감지 ({bundle_count}개 동시매수)"]
+```
+
+런칭 슬롯에 동시 매수가 3개 이상이면 내가 그 물량을 받아주는 호구가 되는 거다.
+
+### 3. Dev 보유량
+
+발행자가 전체 공급량의 몇 퍼센트를 들고 있는지. 15% 넘으면 러그풀 가능성이 높다.
+
+```python
+dev_pct = dev_amount / total_supply * 100
+if dev_pct > MAX_DEV_PCT:  # 15%
+    return -999, [f"❌ Dev 과다보유 ({dev_pct:.1f}%)"]
+```
+
+## get_tx_info 확장
+
+LP 크기를 알려면 런칭 트랜잭션에서 SOL 잔액 변화를 파싱해야 한다. `preBalances`와 `postBalances`를 비교해서 가장 많이 SOL이 늘어난 계정이 LP 풀이다.
+
+```python
+async def get_tx_info(sig: str) -> tuple[str | None, str | None, float]:
+    """mint, creator, 초기 LP SOL 반환"""
+    # ...
+    pre_bals  = result.get("meta", {}).get("preBalances", [])
+    post_bals = result.get("meta", {}).get("postBalances", [])
+    
+    max_gain, pool_sol = 0, 0.0
+    for i, (pre_b, post_b) in enumerate(zip(pre_bals, post_bals)):
+        gain = post_b - pre_b
+        if gain > max_gain and i >= 1:  # index 0은 발행자
+            max_gain = gain
+            pool_sol = gain / 1e9
+    
+    return mint, creator, pool_sol
+```
+
+## 파라미터 전면 조정
+
+스코어링만 바꾼 게 아니다. 밈코인의 수명에 맞게 전체를 다시 맞췄다.
+
+```python
+STOP_LOSS_PCT    = -30.0   # -60 → -30 (밈코인은 -30이면 이미 죽음)
+MAX_HOLD_MINUTES = 7       # 30 → 7분 (유동성 있을 때 탈출)
+WAIT_MINUTES     = 1       # 3 → 1분 (3분은 이미 고점)
+MIN_SCORE        = 70      # 50 → 70 (더 빡빡하게)
+```
+
+-60% 손절은 사실 의미가 없다. 밈코인이 -30% 가면 거기서 회복하는 경우가 드물다. 그냥 -30%에서 컷하는 게 맞다.
+
+3분 대기도 마찬가지. 런칭 직후 3분이면 초기 펌핑이 끝나고 덤핑이 시작되는 타이밍이다. 1분으로 줄여서 펌핑 구간에 들어가는 걸 노린다.
+
+## 배포하고 나서 발견한 버그
+
+배포하고 로그 보다가 Telegram 400 에러가 떴다.
+
+```
+Bad Request: can't parse entities: Unsupported start tag
+```
+
+LP 부족 거절 메시지에 `< 5.0 SOL` 이라고 썼는데, `parse_mode: HTML`에서 `<`를 HTML 태그 시작으로 인식한 거다.
+
+```python
+# 문제
+f"❌ LP 부족 ({pool_sol:.2f} SOL < {MIN_POOL_SOL} SOL)"
+
+# 수정
+f"❌ LP 부족 ({pool_sol:.2f} SOL, 최소 {MIN_POOL_SOL} SOL)"
+```
+
+단순한 거지만 Telegram HTML 모드 쓸 때 `<`, `>`, `&`는 전부 이스케이프하거나 피해야 한다.
+
+## 현재 상태
+
+```
+Printr SOL 뱅어봇 v5 시작 — 유저 1명 (자동매수 1명)
+필터: 70점+ | 대기: 1분 | 매수: 0.02 SOL
+익절 +200% | 손절 -30% | 강제 7분
+[WS] 구독 완료
+```
+
+로그 보면 LP 0 SOL인 토큰들이 즉시 -999로 탈락하고 있다. 필터는 작동 중이다.
+
+---
+
+조작 가능한 신호를 제거하고, 조작이 어려운 신호로만 필터를 다시 짰다. 이게 맞는 방향인지는 실제로 돌려봐야 안다. 다음 글에서 결과를 쓸 예정이다.
