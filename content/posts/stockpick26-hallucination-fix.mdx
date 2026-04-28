@@ -1,0 +1,314 @@
+---
+title: AI 주식 리포트에서 할루시네이션 잡기 — Ollama에게 헤드라인 생성을 맡기지 마라
+description: 로컬 LLM이 없는 뉴스를 지어냈습니다. 삼성전자 주가 17만원, AT&T CEO "John Smith". 근본 원인은 프롬프트가 아니라 구조 문제였습니다.
+date: 2026-04-28
+series: 봇운영인프라
+seriesOrder: 30
+tags: [Ollama, 주식, 할루시네이션, yfinance, Python, LLM, stockpick26]
+---
+
+매일 아침 맥미니가 주식 리포트를 자동 생성합니다.
+
+오늘 리포트를 열었는데 이상했습니다.
+
+```
+삼성전자 (005930)
+현재가: 170,500원
+매수구간: 168,000~171,000원
+
+"삼성전자 1분기 매출 76조원 달성, HBM 출하 확대"
+```
+
+실제 삼성전자 주가는 222,750원. 그 날 그런 뉴스도 없었습니다.
+
+---
+
+## 뭐가 잘못됐나
+
+파이프라인은 이렇게 생겼습니다.
+
+```
+economy_news.py → economy_2026-04-28.txt
+                               ↓
+stock_report.py → Ollama(qwen2.5:14b) → 2026-04-28.json → git push
+```
+
+문제가 두 곳에 있었습니다.
+
+**A. 주가 수집 실패** — yfinance 배치 다운로드가 조용히 실패하고 있었습니다.  
+**B. 할루시네이션** — Ollama가 뉴스를 지어냈습니다.
+
+---
+
+## A. yfinance: 배치 다운로드의 함정
+
+기존 코드:
+
+```python
+import yfinance as yf
+
+tickers = ["005930.KS", "000660.KS", "035420.KS", ...]
+df = yf.download(tickers, period="1d", progress=False)
+```
+
+`yf.download()`는 여러 티커를 한 번에 받는 배치 함수입니다. 네트워크 오류나 티커 하나가 실패하면 **전체 결과가 빈 DataFrame**으로 반환되는 경우가 있습니다. 에러도 안 납니다.
+
+코드는 빈 DataFrame을 그냥 넘기고, 주가가 없으니까 Ollama가 알아서 채웠습니다. 훈련 데이터에 있는 2~3년 전 주가로.
+
+해결은 개별 조회로 전환:
+
+```python
+def fetch_prices(tickers: list[str]) -> dict[str, float]:
+    prices = {}
+    for tk in tickers:
+        try:
+            hist = yf.Ticker(tk).history(period="5d")
+            if not hist.empty:
+                prices[tk] = float(hist["Close"].iloc[-1])
+        except Exception as e:
+            print(f"  [{tk}] 가격 조회 실패: {e}")
+    return prices
+```
+
+`period="5d"`로 5일치를 받아서 마지막 종가를 씁니다. 1일치는 장 시작 전에 비어있을 수 있어서 5일로 넉넉하게.
+
+---
+
+## PRICE_VALID 범위도 틀렸다
+
+티커별로 합리적 범위를 검증하는 딕셔너리가 있었습니다.
+
+```python
+PRICE_VALID = {
+    "005930.KS": (30_000, 180_000),   # 삼성전자
+    "000660.KS": (60_000, 500_000),   # SK하이닉스
+    "TSM":       (50, 300),            # TSMC
+    ...
+}
+```
+
+삼성전자 실제 주가 222,750원 → 범위 초과 → 검증 실패 → 주가 없음 → 할루시네이션.
+
+`180_000`은 2022년 기준이었습니다. 범위를 현실적으로 넓혔습니다.
+
+```python
+PRICE_VALID = {
+    "005930.KS": (30_000, 500_000),   # 삼성전자 (AI 반도체 프리미엄 반영)
+    "000660.KS": (60_000, 2_000_000), # SK하이닉스 (HBM 사이클)
+    "TSM":       (50, 700),            # TSMC
+    "NVDA":      (10, 2_000),          # NVDA (액면분할 전후 대응)
+    ...
+}
+```
+
+---
+
+## B. 할루시네이션: 프롬프트 문제가 아니다
+
+처음엔 프롬프트를 강화했습니다.
+
+```
+- 반드시 수집된 뉴스에서만 인용할 것
+- 없는 뉴스를 만들지 말 것
+- 헤드라인은 정확한 제목 그대로 쓸 것
+```
+
+결과:
+
+```
+"삼성전자, 2분기 반도체 수요 회복 전망" — 연합뉴스 경제
+```
+
+이 제목은 연합뉴스에 없었습니다. "연합뉴스 경제"라는 출처까지 붙여서 지어냈습니다.
+
+지시를 무시한 게 아닙니다. **qwen2.5:14b는 한국 주식 뉴스를 본 적이 없습니다.** 훈련 데이터에 없으니, "연합뉴스에 있을 법한" 뉴스를 생성합니다. 그게 LLM의 작동 방식입니다.
+
+---
+
+## 근본 해결: Ollama에게 헤드라인 생성을 맡기지 마라
+
+구조를 바꿨습니다.
+
+**이전**: RSS 뉴스 텍스트 → Ollama → `{market_overview, kr_headlines, us_headlines, picks}`
+
+**이후**: RSS 뉴스 텍스트 → Ollama → `{market_overview, sentiment, key_themes}` 만  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RSS 원문 → 키워드 분류 → `kr_headlines, us_headlines` 직접 추출
+
+헤드라인은 Ollama가 생성하는 게 아니라, RSS에서 직접 뽑습니다.
+
+```python
+IMPACT_KEYWORDS = {
+    "high": ["금리", "인플레이션", "CPI", "FOMC", "기준금리", "실업률",
+             "earnings", "revenue", "GDP", "tariff", "반도체", "HBM"],
+    "mid":  ["주가", "상승", "하락", "투자", "실적", "시장", "전망",
+             "acquisition", "merger", "guidance"],
+}
+
+def classify_headlines(parsed: dict) -> tuple[list, list]:
+    def score(item):
+        text = (item["title"] + " " + item["desc"]).lower()
+        if any(k in text for k in IMPACT_KEYWORDS["high"]):
+            return 2
+        if any(k in text for k in IMPACT_KEYWORDS["mid"]):
+            return 1
+        return 0
+
+    kr_sorted = sorted(parsed["kr"], key=score, reverse=True)
+    us_sorted = sorted(parsed["us"], key=score, reverse=True)
+
+    return kr_sorted[:5], us_sorted[:5]
+```
+
+그리고 뉴스 분석 결과에 실제 헤드라인을 주입합니다:
+
+```python
+news_data = call_ollama_news(news_text)
+# Ollama가 생성한 헤드라인은 버리고
+news_data["kr_headlines"] = [
+    {"title": it["title"], "source": it["source"]} 
+    for it in kr_headlines_raw
+]
+news_data["us_headlines"] = [
+    {"title": it["title"], "source": it["source"]} 
+    for it in us_headlines_raw
+]
+```
+
+결과:
+
+```
+🇰🇷 국내 헤드라인
+- 두산테스나, 반도체 장비 수주 확대 — 한국경제 증권
+- 삼성전자 가전 OEM 확대 계획 발표 — 매일경제 증권
+- 코스피 외국인 순매수 3거래일 연속 — 연합뉴스 경제
+
+🇺🇸 미국 헤드라인
+- GM beats Q1 earnings estimates despite tariff headwinds — CNBC
+- BP profits double on cost cuts — MarketWatch
+```
+
+실제 뉴스입니다.
+
+---
+
+## economy_news.py: RSS 소스도 정리했다
+
+국내 RSS 피드 12개 중 3개만 정상 작동하고 있었습니다.
+
+```
+이데일리: XML 파싱 에러
+머니투데이: 410 Gone
+조선비즈: 404 Not Found
+파이낸셜뉴스: 404 Not Found
+```
+
+죽은 피드를 제거하고 살아있는 피드를 추가했습니다.
+
+```python
+RSS_FEEDS = [
+    ("연합뉴스 경제",  "KR", "https://www.yna.co.kr/rss/economy.xml"),
+    ("한국경제 경제",  "KR", "https://www.hankyung.com/feed/economy"),
+    ("한국경제 증권",  "KR", "https://www.hankyung.com/feed/finance"),   # 추가
+    ("매일경제",       "KR", "https://www.mk.co.kr/rss/30000001/"),
+    ("매일경제 증권",  "KR", "https://www.mk.co.kr/rss/50100032/"),       # 추가
+    ("동아닷컴 경제",  "KR", "https://rss.donga.com/economy.xml"),         # 추가
+    ...
+]
+```
+
+국내 기사 수: 45건 → 80건.
+
+그리고 구조화된 JSON도 함께 저장합니다:
+
+```python
+parsed = {"kr": kr_items_all, "us": us_items_all}
+PARSED_FILE.write_text(json.dumps(parsed, ensure_ascii=False, indent=2))
+```
+
+`stock_report.py`가 이 파일을 읽어서 `classify_headlines()`에 넘깁니다. 텍스트 덩어리 대신 구조화된 데이터를 넘기니까 키워드 분류도 정확해집니다.
+
+---
+
+## 추가: JSON 파싱 에러
+
+Ollama가 종종 JSON 안에 따옴표를 넣었습니다.
+
+```json
+{
+  "reason": "삼성전자 "AI 반도체" 수요 급증",
+  ...
+}
+```
+
+따옴표 안에 따옴표 → JSON 파싱 실패.
+
+두 가지로 방어했습니다.
+
+1. 프롬프트에서 reason 필드 제약:
+```
+reason: 50자 이내, 따옴표 금지, 종목명+방향+근거 한 문장
+```
+
+2. fallback 파서:
+```python
+def extract_json(text: str) -> dict:
+    # 제어문자 제거
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
+    # ```json ... ``` 추출
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if m:
+        return json.loads(m.group(1))
+    # 중괄호 직접 추출
+    start = text.find("{")
+    end   = text.rfind("}") + 1
+    if start != -1:
+        return json.loads(text[start:end])
+    raise ValueError("JSON not found")
+```
+
+---
+
+## 수치 후처리도 Ollama에서 떼냈다
+
+매수구간/목표가/손절가도 Ollama가 계산하면 틀립니다. 현재가를 모르니까요.
+
+```python
+def fix_pick_kr(pick: dict, prices: dict) -> dict | None:
+    tk = pick.get("ticker", "")
+    if tk not in prices:
+        return None  # 가격 없으면 제외
+    
+    price = prices[tk]
+    pick["current_price"] = price
+    pick["buy_zone"]   = f"{price * 0.97:,.0f}~{price * 1.01:,.0f}원"
+    pick["target"]     = f"{price * 1.12:,.0f}원"
+    pick["stop_loss"]  = f"{price * 0.93:,.0f}원"
+    return pick
+```
+
+현재가 기준 -3%~+1%가 매수구간, +12%가 목표가, -7%가 손절가. 고정 비율이라 단순하지만, Ollama가 지어내는 것보다는 낫습니다.
+
+---
+
+## 전후 비교
+
+| | 수정 전 | 수정 후 |
+|---|---|---|
+| 삼성전자 주가 | 170,500원 (2년 전) | 222,750원 (실제) |
+| 헤드라인 출처 | Ollama 생성 (없는 뉴스) | RSS 원문 직접 |
+| 국내 기사 수 | 45건 | 80건 |
+| JSON 파싱 실패 | 가끔 발생 | fallback으로 방어 |
+| 매수구간 기준 | Ollama 임의 계산 | 현재가 기준 후처리 |
+
+---
+
+## 교훈
+
+LLM이 뭔가를 "생성"하게 시키면 안 되는 경우가 있습니다.
+
+- **사실(Fact)**: 오늘 뉴스 헤드라인, 실시간 주가, 특정 날짜의 이벤트 → 외부 데이터 직접 사용
+- **판단(Judgment)**: 뉴스 감성, 시장 분위기 요약, 주제 분류 → LLM에게 맡겨도 됨
+
+Ollama가 "오늘 뉴스"를 모르는 건 버그가 아닙니다. 설계가 잘못된 겁니다. 훈련 데이터에 없는 정보를 물어보면 LLM은 그럴듯한 걸 만들어냅니다. 그게 LLM입니다.
+
+구조를 바꿔서, 사실은 외부에서 가져오고 판단만 LLM에게 물으면 됩니다.
