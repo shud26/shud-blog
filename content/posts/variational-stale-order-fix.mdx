@@ -1,0 +1,122 @@
+---
+title: "봇이 팔 수 없었던 이유 — Variational 스테일 주문 버그 수정기"
+date: "2026-05-01"
+description: "가격이 2,000달러나 떨어졌는데 매도 주문이 그대로 걸려있었다. 원인과 해결."
+seriesOrder: 31
+tags: ["봇", "variational", "핑퐁", "버그수정", "자동매매"]
+---
+
+Variational 핑퐁봇이 매도를 안 하고 있었다.
+
+사이클은 정상적으로 돌고 있었다. 로그에도 오류가 없었다. 그런데 체결이 없었다. 확인해보니 이유는 단순했다. 매도 주문이 $77,860에 걸려있는데 BTC 현재가는 $75,700이었다. 가격이 $2,160 아래로 내려간 상태에서 봇은 아무것도 모르고 사이클만 돌리고 있었다.
+
+## 핑퐁봇의 작동 방식
+
+핑퐁봇은 현재가 기준으로 위아래에 매수·매도 주문을 동시에 걸어두고, 한쪽이 체결되면 반대편 주문을 새로 배치하는 방식이다.
+
+```
+현재가 $77,000
+  ├─ SELL @ $77,231 (현재가 + 0.3%)
+  └─ BUY  @ $76,769 (현재가 - 0.3%)
+
+BUY 체결 → SELL @ $77,000 (체결가 + 0.3%) 재배치
+SELL 체결 → BUY @ $76,538 (체결가 - 0.3%) 재배치
+```
+
+가격이 좁은 범위에서 오르내리는 횡보 구간에서는 잘 작동한다. 문제는 가격이 한 방향으로 크게 움직일 때다.
+
+## 뭐가 문제였나
+
+BTC가 $77,400에서 $75,700으로 약 2.2% 하락했다.
+
+봇은 $77,396에서 매수가 체결된 후 $77,860에 매도 주문을 걸었다. 그 사이에 가격이 크게 떨어졌다. $77,860짜리 매도 주문은 현재가보다 $2,160 위에 걸려있는 상태가 됐다.
+
+봇은 이 주문이 "아직 체결되지 않은 정상 주문"이라고 인식한다. 새로 주문을 배치할 이유가 없다. 가격이 $77,860까지 회복되길 기다리는 것이다.
+
+```
+상태:
+  열린 매도 주문: $77,860 ← 현재가보다 2.3% 위
+  현재가: $75,700
+
+봇 판단: "아직 체결 안 됐으니 기다리자"
+실제 상황: 가격이 회복되지 않으면 영원히 대기
+```
+
+스톱로스 로직도 있었다. entry 대비 2% 이상 역행하면 포지션을 청산하는 코드다. 그런데 이것도 실행이 안 됐다. Variational API에서 포지션 조회가 제대로 되지 않으면 스톱로스가 발동하지 않는 구조였다.
+
+결국 두 가지 안전장치가 모두 작동하지 않았다.
+
+## 해결 방법
+
+스테일 주문 감지 함수를 추가했다.
+
+열린 주문의 가격이 현재가 대비 1.5% 이상 벗어나면 "스테일(stale, 오래된) 주문"으로 판단하고 취소한 뒤 현재가 기준으로 재배치한다.
+
+```python
+STALE_THRESHOLD = 0.015  # 1.5%
+
+def check_stale_orders(client, mid):
+    astate = get_astate(client.label)
+    open_orders = astate.get("open_orders", [])
+
+    sell_orders = [o for o in open_orders if not o["is_buy"]]
+    buy_orders  = [o for o in open_orders if o["is_buy"]]
+
+    # 매도 주문이 현재가보다 1.5% 이상 위에 있으면 재센터
+    if sell_orders:
+        min_sell = min(o["price"] for o in sell_orders)
+        if min_sell > mid * (1 + STALE_THRESHOLD):
+            drift = (min_sell - mid) / mid * 100
+            send_telegram(f"🔄 스테일 주문 감지\n매도 ${min_sell:,.1f} vs 현재 ${mid:,.1f} ({drift:.1f}% 괴리)")
+            client.cancel_all_orders()
+            astate["open_orders"] = []
+            save_state()
+            return True  # 이후 run_cycle에서 place_initial_pair 호출
+
+    # 매수 주문이 현재가보다 1.5% 이상 아래에 있어도 동일 처리
+    if buy_orders:
+        max_buy = max(o["price"] for o in buy_orders)
+        if max_buy < mid * (1 - STALE_THRESHOLD):
+            client.cancel_all_orders()
+            astate["open_orders"] = []
+            save_state()
+            return True
+
+    return False
+```
+
+`run_cycle()`에서 체결 감지 이후에 호출한다.
+
+```python
+def run_cycle():
+    for client in clients:
+        mid = client.get_mid_price(COIN)
+
+        check_stop_loss(client, mid)
+        check_fills(client)
+
+        # 스테일 주문 체크 추가
+        if check_stale_orders(client, mid):
+            continue
+
+        if not astate.get("open_orders"):
+            place_initial_pair(client, mid)
+```
+
+`check_stale_orders`가 `True`를 반환하면 `open_orders`가 비어있으므로 다음 사이클에서 `place_initial_pair`가 자동으로 현재가 기준 새 주문을 배치한다.
+
+## 재센터의 트레이드오프
+
+스테일 주문을 취소하고 재센터하면 포지션 상태가 리셋된다.
+
+이게 항상 좋은 건 아니다. 만약 가격이 다시 $77,860까지 회복된다면, 기다린 쪽이 더 나은 결과였을 수 있다. 하지만 핑퐁봇의 목적은 좁은 구간에서 체결 횟수를 최대화하는 것이다. $2,000 위에 걸린 주문을 기다리는 동안 봇은 아무것도 못 하고 있다. 기회비용이 더 크다.
+
+1.5%라는 기준도 임의적이다. GAP_PCT가 0.3%이니까 1.5%면 갭의 5배다. 이 정도 벗어났으면 정상적인 핑퐁 범위를 벗어난 것으로 판단한다.
+
+## 배운 것
+
+핑퐁봇을 만들 때 "가격이 크게 움직이면 어떻게 되는가"를 미리 생각해야 한다.
+
+체결 로직, 수익 계산, 스톱로스 — 여기까지는 만들었다. 그런데 "주문이 현재가 범위를 벗어난 채로 방치된 상태"는 생각하지 못했다. 봇이 멀쩡히 돌아가고 있으니 문제가 없다고 착각했다.
+
+사이클이 돌아간다는 것과 봇이 제대로 작동하고 있다는 것은 다른 말이다.
