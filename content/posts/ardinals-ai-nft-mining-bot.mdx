@@ -1,0 +1,159 @@
+---
+title: AI가 수수께끼를 풀어야만 NFT를 민팅할 수 있는 프로젝트 — 자동화 세팅 과정
+description: Base 메인넷의 Ardinals 프로젝트에 Ollama qwen2.5:14b를 연결해 6분마다 수수께끼를 풀고 commit하는 봇을 만들었습니다. macOS LaunchAgent + Python 자동화 과정.
+date: 2026-05-05
+series: 에어드랍파밍
+seriesOrder: 2
+tags: [ardinals, nft, base, ollama, python, launchagent, 자동화, 바이브코딩]
+---
+
+트위터에서 이상한 프로젝트를 발견했습니다.
+
+**"AI 에이전트만 민팅 가능. 인간은 직접 못 함."**
+
+NFT 민팅은 원래 사람이 하는 거 아닌가 싶었는데, 기획 의도가 있었습니다. 프로젝트 이름은 **Ardinals**. Base 메인넷에서 진행 중인 온체인 사전 프로젝트입니다.
+
+---
+
+## 메커니즘
+
+6분마다 에포크가 열립니다. 그 안에 수수께끼가 약 20개 공개됩니다.
+
+예시:
+> *"사람이 지나간 자리에 남는 것, 물도 지우지 못하는 것"* → 정답: 흔적
+
+AI가 답을 추론해서 온체인으로 commit → reveal → Chainlink VRF 추첨 → 당첨 시 NFT 민팅. 21,000개 하드캡입니다.
+
+commit당 0.00001 ETH 보증금이 있는데, 틀려도 100% 환급됩니다. 가스비만 내면 됩니다. Base라서 TX당 몇 센트 수준입니다.
+
+---
+
+## 왜 해봤냐
+
+맥미니에 이미 qwen2.5:14b가 돌고 있었습니다. 추론 비용 $0. VPS 없음. API 키 없음. 가스비만 내면 됩니다.
+
+**추가 비용이 없으면 시도하지 않을 이유가 없습니다.**
+
+---
+
+## 세팅 과정
+
+### 1. ardi-agent + awp-wallet 설치
+
+공식 Rust CLI 바이너리입니다. awp-wallet이라는 Node.js 서명 레이어가 별도로 필요합니다. 맥미니에 Node.js가 없어서 brew install부터 시작했습니다.
+
+```bash
+# PATH 문제가 있어서 직접 경로 지정
+/opt/homebrew/bin/brew install node
+PATH=/opt/homebrew/bin:$PATH bash install.sh
+```
+
+### 2. KYA (Know Your Agent) 인증
+
+에이전트 신원 인증 레이어입니다. 트위터 계정을 연결하고, set-recipient + grant-delegate를 온체인으로 실행합니다.
+
+```bash
+ardi-agent kya set-recipient --address 0x...
+ardi-agent kya grant-delegate
+```
+
+### 3. AWP 스테이킹
+
+10,000 AWP 이상을 3일 락해야 mining에 참여할 수 있습니다. `buy-and-stake` 커맨드 하나로 ETH → USDC → AWP 스왑 + 락까지 처리됩니다.
+
+```bash
+ardi-agent buy-and-stake --eth 0.04
+```
+
+스왑 TX가 "잔고 0" 오류를 두 번 뿜었는데 사실 TX는 성공한 것이었습니다. 다시 실행하면 기존 잔고를 감지하고 다음 단계로 넘어갑니다.
+
+### 4. 자동화 — Python으로 우회
+
+공식 `auto-mine` 커맨드가 있지만 **Linux + systemd 전용**입니다. macOS에서 실행하면 `AUTOMINE_UNSUPPORTED_OS` 에러가 납니다.
+
+직접 Python 스크립트를 작성했습니다. 핵심 제약 두 가지:
+
+- **commit은 절대 병렬 실행 금지**: nonce 충돌로 전부 실패합니다
+- **fcntl.flock**: LaunchAgent 중복 실행 방지
+
+```python
+def ask_ollama(riddles: list[dict]) -> list[dict]:
+    prompt = f"""You are solving word riddles for Ardinals on Base mainnet.
+Each riddle describes ONE specific word. Answer in the SAME language as the riddle.
+Pick UP TO 5 riddles (highest power/rarity first).
+
+Riddles:
+{riddle_text}
+
+Respond ONLY with valid JSON array:
+[{{"wordId": 123, "answer": "word"}}, ...]"""
+
+    r = requests.post(OLLAMA_URL, json={
+        "model": "qwen2.5:14b",
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+        "options": {"temperature": 0.1}
+    }, timeout=120)
+    content = r.json()["message"]["content"]
+    # 모델이 앞뒤에 설명 텍스트를 붙일 수 있음
+    start, end = content.find("["), content.rfind("]") + 1
+    return json.loads(content[start:end])
+
+
+def main():
+    # 1. 락 파일로 중복 실행 방지
+    lock_fd = open(LOCK_FILE, "w")
+    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    # 2. 이전 commit들 reveal/inscribe 처리
+    handle_pending()
+
+    # 3. 현재 에포크 + 수수께끼 가져오기
+    ctx = run_ardi(["context"])
+    data = ctx.get("data", {})
+    if "epochId" not in data:
+        return  # 에포크 없음
+
+    window = int(data.get("commitDeadline", time.time() + 180) - time.time())
+    if window < 95:  # Ollama 42s + commit 5개 50s = ~92s
+        return  # 창 너무 짧음, 다음 에포크 대기
+
+    # 4. Ollama로 수수께끼 추론
+    answers = ask_ollama(riddles)
+
+    # 5. 순차 commit (병렬 절대 금지)
+    for a in answers[:5]:
+        run_ardi(["commit", "--word-id", str(a["wordId"]), "--answer", a["answer"]])
+        time.sleep(2)
+```
+
+### 5. LaunchAgent 등록
+
+6분(360초)마다 실행하는 LaunchAgent를 맥미니에 등록했습니다. KeepAlive는 false — 한 사이클 실행하고 종료, 다시 실행하는 방식입니다.
+
+```xml
+<key>StartInterval</key>
+<integer>360</integer>
+<key>KeepAlive</key>
+<false/>
+```
+
+---
+
+## 삽질 포인트
+
+**ardi-agent JSON 구조**: 에포크 없을 때 `data.epochId` 키 자체가 없습니다. `data["epochId"]`로 접근하면 KeyError. `"epochId" not in data`로 체크해야 합니다.
+
+**로그 중복**: LaunchAgent가 stdout을 파일로 리다이렉트하는데, Python 코드에서도 파일에 쓰면 두 번 찍힙니다. `print()` 만 쓰고 파일 write 제거.
+
+**창 시간 체크**: Ollama 추론 ~42초, commit 5개 순차 ~50초. 95초 미만 창은 스킵합니다. 처음엔 120초로 잡았다가 너무 보수적이라 95초로 낮췄습니다.
+
+---
+
+## 현재 결과
+
+Epoch 174부터 시작해서 현재까지 약 70여 개 commit 제출. mintCount는 아직 0입니다.
+
+VRF 복권이라 commit을 많이 넣어도 당첨 보장은 없습니다. 하지만 맥미니는 어차피 24시간 켜있고, Ollama도 어차피 돌고 있으니 추가 비용은 가스비(하루 $0.5~$1)뿐입니다.
+
+인프라를 이미 갖고 있다면 기회비용이 거의 0인 베팅입니다.

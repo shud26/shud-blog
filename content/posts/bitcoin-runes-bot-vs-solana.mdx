@@ -1,0 +1,112 @@
+---
+title: printr_sol_bot을 Bitcoin으로 포팅하려면 뭐가 달라지나
+description: SOL 뱅어봇과 Bitcoin Runes 감지 봇의 구조 차이 — WebSocket, 트랜잭션 파싱, 매수 방식까지 개발자 관점으로 비교했습니다.
+date: 2026-04-24
+series: 봇입문가이드
+seriesOrder: 2
+tags: [bitcoin, runes, solana, bot, python, 바이브코딩]
+---
+
+솔라나에서 신규 토큰을 자동 감지하는 봇을 만들었습니다. DBC 프로그램 WebSocket을 구독하고, 새 토큰 런치 트랜잭션을 잡아서 Jupiter로 자동 매수하는 구조입니다.
+
+그러다 Bitcoin Runes 생태계를 보면서 생각이 들었습니다. 이걸 비트코인에서 하면 어떻게 달라지지?
+
+---
+
+## SOL 뱅어봇 구조 요약
+
+```
+WebSocket (logsSubscribe) → DBC 프로그램 로그 감지
+→ TX 파싱 (getTransaction) → 민트 주소 추출
+→ 점수 필터 (30점+) → Jupiter 스왑 → 매수 완료
+```
+
+핵심은 **WebSocket 실시간 감지**입니다. Solana는 `logsSubscribe`로 특정 프로그램 로그를 구독할 수 있습니다. 새 토큰이 런치되면 DBC 프로그램이 `InitializeVirtualPool` 인스트럭션을 실행하는데, 이걸 잡습니다.
+
+---
+
+## Bitcoin에서 같은 걸 하려면
+
+### 1. WebSocket 구독 방식이 다르다
+
+Solana:
+```python
+ws.send(json.dumps({
+    "jsonrpc": "2.0",
+    "method": "logsSubscribe",
+    "params": [{"mentions": [DBC_PROGRAM]}, {"commitment": "confirmed"}]
+}))
+```
+
+Bitcoin은 프로그램 단위 구독이 없습니다. 새 블록·트랜잭션을 통째로 받아서 직접 필터링해야 합니다.
+
+```python
+# Bitcoin WebSocket (mempool.space API)
+ws.send(json.dumps({"action": "want", "data": ["blocks", "mempool-blocks"]}))
+```
+
+블록마다 수백~수천 개 트랜잭션을 전부 받아서 Runes Etching 트랜잭션만 골라내야 합니다.
+
+### 2. 트랜잭션 구조가 완전히 다르다
+
+Solana는 계정 기반입니다. 트랜잭션에 관련 계정 주소들이 명시적으로 들어있고, 어떤 프로그램이 실행됐는지 바로 보입니다.
+
+Bitcoin은 UTXO 기반입니다. Runes 데이터는 `OP_RETURN` 출력에 인코딩되어 있습니다.
+
+```python
+def is_runes_etching(tx):
+    for output in tx["vout"]:
+        script = output.get("scriptPubKey", {}).get("asm", "")
+        if script.startswith("OP_RETURN"):
+            # Runes 프로토콜 매직 바이트: 0x52554e45 = "RUNE"
+            if "52554e45" in script:
+                return True
+    return False
+```
+
+### 3. 매수 방식이 다르다
+
+Solana는 Jupiter SDK로 스왑 트랜잭션을 만들고 서명해서 보내면 끝입니다.
+
+Bitcoin Runes는 PSBT(Partially Signed Bitcoin Transaction)를 직접 구성해야 합니다. 내 UTXO를 인풋으로, Runes 민팅 데이터를 OP_RETURN 아웃풋으로 넣어서 트랜잭션을 만듭니다.
+
+```python
+from bitcoin.core import CMutableTransaction, CMutableTxIn, CMutableTxOut
+from bitcoin.core.script import CScript, OP_RETURN
+
+tx = CMutableTransaction()
+tx.vin = [CMutableTxIn(utxo)]
+tx.vout = [
+    CMutableTxOut(0, CScript([OP_RETURN, runes_data])),  # Runes 데이터
+    CMutableTxOut(change_amount, my_address_script),      # 잔돈
+]
+```
+
+### 4. 수수료 전략이 완전히 달라진다
+
+Solana는 수수료가 거의 고정입니다. 우선순위 수수료를 좀 올려도 $0.1 이하입니다.
+
+Bitcoin은 수수료가 실시간 경매입니다. 내가 제시한 sat/vByte가 낮으면 트랜잭션이 묻힙니다. mempool 상태를 보고 동적으로 수수료를 결정해야 합니다.
+
+```python
+async def get_fee_rate():
+    async with aiohttp.ClientSession() as session:
+        async with session.get("https://mempool.space/api/v1/fees/recommended") as r:
+            data = await r.json()
+            return data["fastestFee"]  # sat/vByte
+```
+
+---
+
+## 정리
+
+|  | printr_sol_bot | Bitcoin Runes 봇 |
+|--|----------------|-----------------|
+| 감지 방식 | logsSubscribe (프로그램 필터) | 블록 구독 후 직접 필터 |
+| TX 구조 | 계정 기반, 명시적 | UTXO 기반, OP_RETURN |
+| 매수 | Jupiter SDK | PSBT 직접 구성 |
+| 수수료 | 거의 고정 | 동적, mempool 연동 |
+| 블록 속도 | 400ms | 10분 |
+| 난이도 | 중 | 상 |
+
+아직 만들진 않았습니다. 먼저 Runes를 직접 써보고, Bitcoin RPC에 익숙해진 다음 단계입니다. 구조는 이미 보입니다 — Solana에서 배운 패턴을 그대로 가져가되, Bitcoin의 UTXO 모델만 새로 배우면 됩니다.
