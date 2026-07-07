@@ -4,6 +4,14 @@ import matter from "gray-matter";
 
 const POSTS_DIR = path.join(process.cwd(), "content/posts");
 
+// YAML이 date를 JS Date로 파싱 → YYYY-MM-DD 문자열로 정규화 (KST)
+function fmtDate(d: unknown): string {
+  if (!d) return "";
+  const dt = new Date(d as string);
+  if (isNaN(dt.getTime())) return String(d);
+  return new Date(dt.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
 export interface PostMeta {
   slug: string;
   title: string;
@@ -12,6 +20,7 @@ export interface PostMeta {
   tags: string[];
   series?: string;
   seriesOrder?: number;
+  category?: string;
 }
 
 export interface Post extends PostMeta {
@@ -30,10 +39,11 @@ export function getAllPosts(): PostMeta[] {
         slug,
         title: data.title ?? slug,
         description: data.description ?? "",
-        date: data.date ? String(data.date) : "",
+        date: fmtDate(data.date),
         tags: data.tags ?? [],
         series: data.series,
         seriesOrder: data.seriesOrder,
+        category: data.category,
       };
     })
     .sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -46,10 +56,11 @@ export function getPost(slug: string): Post {
     slug,
     title: data.title ?? slug,
     description: data.description ?? "",
-    date: data.date ? String(data.date) : "",
+    date: fmtDate(data.date),
     tags: data.tags ?? [],
     series: data.series,
     seriesOrder: data.seriesOrder,
+    category: data.category,
     content,
   };
 }
@@ -59,4 +70,34 @@ export function getAllSlugs(): string[] {
     .readdirSync(POSTS_DIR)
     .filter((f) => f.endsWith(".mdx"))
     .map((f) => f.replace(".mdx", ""));
+}
+
+// ── 카테고리 목차 시스템 ──
+export interface Category {
+  key: string;
+  label: string;
+  emoji: string;
+  desc: string;
+}
+
+// 표시 순서 = 이 배열 순서. 신설 카테고리는 여기 추가만 하면 됨.
+export const CATEGORIES: Category[] = [
+  { key: "게임개발", label: "게임 개발", emoji: "🎮", desc: "코인던전 — 웹 게임 만들기" },
+  { key: "트레이딩봇", label: "트레이딩 봇", emoji: "🤖", desc: "매매봇 설계·운영·결산 기록" },
+  { key: "에어드랍파밍", label: "에어드랍 · 파밍", emoji: "🌱", desc: "온체인 파밍 세팅과 비용" },
+  { key: "인프라자동화", label: "인프라 · 자동화", emoji: "🏗️", desc: "맥미니 서버, 옵시디언, 파이프라인" },
+  { key: "트러블슈팅", label: "트러블슈팅", emoji: "🐛", desc: "삽질과 버그 해결 기록" },
+  { key: "입문에세이", label: "입문 · 에세이", emoji: "📝", desc: "바이브코딩 여정과 생각" },
+];
+
+export interface CategoryGroup extends Category {
+  posts: PostMeta[];
+}
+
+/** 카테고리별로 묶어 반환 (각 그룹 내부는 최신순). 글 없는 카테고리는 제외. */
+export function getPostsByCategory(): CategoryGroup[] {
+  const all = getAllPosts();
+  return CATEGORIES
+    .map((c) => ({ ...c, posts: all.filter((p) => p.category === c.key) }))
+    .filter((g) => g.posts.length > 0);
 }
