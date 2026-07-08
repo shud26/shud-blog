@@ -1,0 +1,122 @@
+---
+title: curl로 로그인이 403 뜬다 — Cloudflare를 브라우저 fetch로 뚫은 이야기
+description: 잘 되던 봇이 어느 날 로그인부터 403 "Just a moment". curl_cffi 지문 위장도 안 통했다. 실제 브라우저의 fetch를 훔쳐 쓰는 방법으로 해결한 과정.
+date: 2026-07-09
+category: 트러블슈팅
+tags: [cloudflare, playwright, patchright, 봇, 크롤링, 자동화]
+---
+
+> 이 글은 개인 개발 기록이며, 본인이 접근 권한을 가진 서비스에 한한 이야기입니다.
+
+몇 달 잘 돌던 봇이 있었다. 어느 날 다시 켰더니 **로그인부터 막혔다.**
+
+```
+[A1] 로그인 실패: 403 <!DOCTYPE html>...<title>Just a moment...</title>
+```
+
+Cloudflare였다. "Just a moment..." — 자동화 요청을 걸러내는 그 화면.
+
+## 1차 시도: 지문 위장 (실패)
+
+원래 이 봇은 `curl_cffi`를 썼다. 평범한 `requests`는 TLS 핸드셰이크 지문이 파이썬 티가 나서 바로 걸리는데, `curl_cffi`는 크롬의 TLS 지문을 흉내(impersonate)내서 통과시킨다.
+
+```python
+from curl_cffi import requests as cf
+session = cf.Session(impersonate="chrome")
+```
+
+근데 이게 403. 버전이 낡았나 싶어 최신 크롬 지문으로 바꿨다.
+
+```python
+session = cf.Session(impersonate="chrome146")  # 최신
+```
+
+**여전히 403.** 이미 `curl_cffi`도 최신이었다. TLS 지문 위장으로는 갈 데까지 간 것이다.
+
+## 원인: JS 챌린지로 강화됨
+
+핵심을 놓치고 있었다. Cloudflare에는 단계가 있다.
+
+- **TLS 지문 검사**만 하는 단계 → `curl_cffi`로 통과 가능
+- **JS 챌린지**를 거는 단계 → "브라우저가 자바스크립트를 실행해서 퍼즐을 풀어라". TLS 지문만으로는 절대 못 넘음
+
+이 서비스가 후자로 올라간 것이다. `cf_clearance`라는 "챌린지 통과 증명" 쿠키가 있어야 하는데, 이건 **실제 브라우저가 JS를 돌려야만** 발급된다. 그리고 결정적으로 — **브라우저에서 직접 열면 멀쩡히 로그인된다.** 즉 서비스가 막힌 게 아니라 *자동화만* 막힌 거였다.
+
+그럼 답은 하나. 진짜 브라우저를 쓰면 된다.
+
+## 2차 시도: Playwright headless (실패)
+
+Playwright로 헤드리스 크롬을 띄워 사이트를 열고 쿠키를 받아봤다.
+
+```python
+browser = p.chromium.launch(headless=True)
+```
+
+`__cf_bm`은 받는데 정작 필요한 `cf_clearance`가 안 나온다. **헤드리스(화면 없는) 브라우저를 Cloudflare가 봇으로 감지**하는 것이다. stealth 패치판인 `patchright`로도, headless인 이상 똑같이 막혔다.
+
+## 3차 시도: 진짜 화면에 띄우기 (성공의 실마리)
+
+결국 **화면이 있는 실제 브라우저(headed)**가 필요했다. 헤드리스는 안 되고, 진짜 창이 떠야 `cf_clearance`가 나온다.
+
+```python
+ctx = p.chromium.launch_persistent_context(
+    user_data_dir="./profile",   # 프로필 저장 → 쿠키 재사용
+    headless=False,              # ★ 화면에 진짜 창
+)
+```
+
+`persistent_context`가 핵심이다. 프로필을 디스크에 저장하니, 한 번 통과한 `cf_clearance`가 남아서 다음엔 챌린지를 다시 안 푼다.
+
+이제 `cf_clearance`는 받았다. 근데 또 막혔다.
+
+## 마지막 함정: page.request는 진짜 fetch가 아니다
+
+브라우저로 API를 호출하는데 여전히 403.
+
+```python
+r = page.request.post(url, data=...)   # ← 이게 함정
+```
+
+Playwright의 `page.request`는 이름은 "브라우저 요청" 같지만, 실제로는 **별도의 요청 컨텍스트**다. 브라우저가 방금 받은 `cf_clearance`나 JS 환경이 온전히 실리지 않는다.
+
+해결은 **브라우저 안에서 진짜 `fetch()`를 실행**시키는 것이었다.
+
+```python
+result = page.evaluate("""
+  async ([path, body]) => {
+    const r = await fetch(path, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+      credentials: 'include'   // ★ 쿠키·cf_clearance 전부 실림
+    });
+    return { status: r.status, text: await r.text() };
+  }
+""", [path, payload])
+```
+
+`page.evaluate` 안의 `fetch`는 그 페이지의 진짜 자바스크립트 환경에서 돈다. 쿠키, `cf_clearance`, 헤더가 브라우저가 평소 하던 그대로 실린다.
+
+```
+generate_signing_data: 200
+login: 200
+✅ 로그인 성공
+```
+
+**뚫렸다.**
+
+## 정리 — Cloudflare 우회의 사다리
+
+같은 403이라도 어느 단계에 막혔는지가 다르다. 낮은 데서부터:
+
+1. `requests` → TLS 지문에서 걸림
+2. `curl_cffi` (지문 위장) → JS 챌린지엔 무력
+3. Playwright **headless** → 헤드리스 감지로 `cf_clearance` 못 받음
+4. Playwright **headed + persistent** → `cf_clearance` 받음
+5. `page.evaluate`의 **브라우저 네이티브 fetch** → 그 쿠키를 실제로 실어 호출 → 통과
+
+핵심 교훈 두 개.
+- **`cf_clearance`가 필요한 순간, 답은 "진짜 화면에 뜬 브라우저"다.** 헤드리스로 우회하려고 몇 시간 태우는 것보다, 화면 있는 환경에서 한 번 통과시키고 프로필로 쿠키를 재사용하는 게 빠르다.
+- **`page.request` ≠ 브라우저 fetch.** 쿠키가 걸린 요청은 `page.evaluate` 안의 `fetch`로 해야 브라우저의 컨텍스트가 온전히 실린다.
+
+TLS 지문 위장이 안 통하기 시작하면, 위장을 더 정교하게 만들 게 아니라 **그냥 진짜 브라우저를 쓰는 게 정답**일 때가 있다.
