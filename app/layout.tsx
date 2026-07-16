@@ -29,7 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </a>
             <nav style={{ display: "flex", gap: "1rem", fontSize: "0.88rem" }}>
               <a href="/" style={{ textDecoration: "none", color: "#374151", fontWeight: 600 }}>글</a>
-              <a href="https://ftd.shud26.com" style={{ textDecoration: "none", color: "#374151", fontWeight: 600 }}>FTD 신호기</a>
+              <a href="/ftd" style={{ textDecoration: "none", color: "#374151", fontWeight: 600 }}>FTD 신호기</a>
             </nav>
           </header>
           <main style={{ padding: "2.5rem 0 5rem" }}>{children}</main>

@@ -9,6 +9,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   }));
   return [
     { url: base, lastModified: new Date() },
+    { url: `${base}/ftd` },
     { url: `${base}/about` },
     { url: `${base}/privacy` },
     { url: `${base}/contact` },
