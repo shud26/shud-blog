@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,6 +13,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ko">
       <body>
+        <Script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8600828705366909"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
+        />
         <div style={{ maxWidth: 680, margin: "0 auto", padding: "0 1.25rem" }}>
           <header style={{ padding: "2.5rem 0 2rem", borderBottom: "1px solid #e5e7eb" }}>
             <a href="/" style={{ textDecoration: "none", color: "#111" }}>
