@@ -39,8 +39,9 @@ export default function Home() {
       </h2>
       {groups.map((group) => (
         <section key={group.key} style={{ marginBottom: "2.25rem" }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", marginBottom: "0.15rem" }}>
-            <span style={{ fontSize: "1.05rem" }}>{group.emoji}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.15rem" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={group.icon} alt="" width={22} height={22} style={{ imageRendering: "pixelated" }} />
             <h3 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0, letterSpacing: "-0.01em" }}>{group.label}</h3>
             <span style={{ fontSize: "0.8rem", color: "#9ca3af" }}>{group.posts.length}</span>
           </div>
