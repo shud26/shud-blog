@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://shud26.com"),
   title: "shud.log",
   description: "바이브코딩으로 만드는 것들, 운영하면서 배운 것들",
+  alternates: { canonical: "./" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -20,6 +22,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </a>
           </header>
           <main style={{ padding: "2.5rem 0 5rem" }}>{children}</main>
+          <footer style={{ borderTop: "1px solid #e5e7eb", padding: "1.5rem 0 2.5rem", fontSize: "0.8rem", color: "#9ca3af", display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+            <span>© {new Date().getFullYear()} shud.log</span>
+            <a href="/about" style={{ color: "#9ca3af" }}>소개</a>
+            <a href="/privacy" style={{ color: "#9ca3af" }}>개인정보처리방침</a>
+            <a href="/contact" style={{ color: "#9ca3af" }}>연락처</a>
+          </footer>
         </div>
       </body>
     </html>
