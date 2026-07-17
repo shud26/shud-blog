@@ -1,6 +1,6 @@
 ---
 title: 봇이 일을 안 한다고 생각했는데, 사실 코드 버그였다 — race condition 디버깅
-description: Variational 핑퐁봇이 오더만 걸어두고 거래를 안 하는 것 같았다. 로그를 파고들었더니 체결 감지 코드에 숨어있는 race condition이 원인이었다.
+description: "비동기 봇에서 주문이 안 나가던 이유는 race condition이었습니다 — 체결 콜백과 주문 루프가 겹칠 때 생기는 버그의 디버깅 기록."
 date: 2026-05-01
 tags: [봇운영, 디버깅, Python, 핑퐁봇, Variational]
 series: 봇운영인프라
