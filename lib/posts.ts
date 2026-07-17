@@ -101,3 +101,9 @@ export function getPostsByCategory(): CategoryGroup[] {
     .map((c) => ({ ...c, posts: all.filter((p) => p.category === c.key) }))
     .filter((g) => g.posts.length > 0);
 }
+
+/** 본문에서 첫 마크다운 이미지 URL 추출 (og:image용). 없으면 기본 이미지. */
+export function getPostImage(content: string): string {
+  const m = content.match(/!\[[^\]]*\]\(([^)]+)\)/);
+  return m ? m[1] : "/images/og-default.png";
+}
