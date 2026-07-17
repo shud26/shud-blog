@@ -174,6 +174,8 @@ export default function FtdPage() {
           <div className="ftd-mini"><b>타율은 5할</b><span>2번 중 1번만 맞아요. 100% 믿으면 안 돼요.</span></div>
           <div className="ftd-mini"><b>너무 빠르면 가짜</b><span>2~3일 만에 확 가면 오히려 가짜일 확률이 높아요.</span></div>
         </div>
+        <img src="/images/ftd/fx-getup.png" alt="넘어졌다가 다시 단단하게 일어선 사람" className="ftd-img" />
+        <p className="ftd-cap">일어나는 척은 누구나 한다 — 진짜 회복은 며칠 뒤에도 서 있는 것</p>
         <div className="ftd-warn">
           <b>가짜도 있어요.</b> 일어났다가 다시 눕는 친구처럼, 신호가 떠도 도로 떨어질 때가 절반이에요. 그래서 한 발은 빼놓고 조심해요.
         </div>
@@ -240,6 +242,8 @@ export default function FtdPage() {
 
       <div className="ftd-card">
         <h3>상승 % 임계치의 역사</h3>
+        <img src="/images/ftd/fx-wave.png" alt="잔잔한 바다의 작은 파도와 태풍 치는 바다의 큰 파도" className="ftd-img" />
+        <p className="ftd-cap">잔잔한 바다의 1m 파도는 사건이지만, 태풍 바다에선 그냥 물결 — 그래서 기준은 변동성을 따라간다</p>
         <p>임계치는 고정값이 아니라 <span className="ftd-hl">시대에 따라 계속 진화</span>했어요.</p>
         <div className="ftd-chart">
           <div className="t">FTD 상승률 임계치의 변천</div>
@@ -318,6 +322,7 @@ export default function FtdPage() {
 
       <div className="ftd-card">
         <h3>연도별 실전 사례 — 200일선 아래 FTD 대장정</h3>
+        <img src="/images/ftd/fx-museum.png" alt="차트 액자가 걸린 박물관 복도를 걷는 관람객" className="ftd-img" />
         <p>Webby가 1978년부터 짚은 실제 사례들. <span className="ftd-hl">200일선 아래 FTD는 절반 이상이 실패</span>하지만, 작동할 땐 큰 상승의 출발점이 됐어요.</p>
         <table className="ftd-table">
           <tbody>
