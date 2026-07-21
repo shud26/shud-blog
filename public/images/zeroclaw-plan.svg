@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 240" font-family="'Galmuri11','DungGeunMo',monospace">
+  <rect width="840" height="240" fill="#ffffff"/>
+  <!-- track -->
+  <rect x="40" y="120" width="150" height="36" fill="#e5533d" stroke="#241405" stroke-width="4"/>
+  <rect x="190" y="120" width="250" height="36" fill="#ffd54a" stroke="#241405" stroke-width="4"/>
+  <rect x="440" y="120" width="360" height="36" fill="#2fbf6b" stroke="#241405" stroke-width="4"/>
+  <!-- day ticks -->
+  <text x="40" y="190" font-size="15" fill="#666">Day 1</text>
+  <text x="168" y="190" font-size="15" fill="#666">Day 3</text>
+  <text x="418" y="190" font-size="15" fill="#666">Day 8</text>
+  <text x="760" y="190" font-size="15" fill="#666">Day 16</text>
+  <!-- labels -->
+  <text x="115" y="100" font-size="18" fill="#241405" text-anchor="middle" font-weight="bold">관문 3일</text>
+  <text x="115" y="215" font-size="14" fill="#8a4a3a" text-anchor="middle">부품이 꽂히는가?</text>
+  <text x="315" y="100" font-size="18" fill="#241405" text-anchor="middle" font-weight="bold">이식 5일</text>
+  <text x="315" y="215" font-size="14" fill="#8a6a1a" text-anchor="middle">내 봇 로직을 옮긴다</text>
+  <text x="620" y="100" font-size="18" fill="#241405" text-anchor="middle" font-weight="bold">실사용 8일</text>
+  <text x="620" y="215" font-size="14" fill="#1a6a3a" text-anchor="middle">내 진짜 포지션에 물려서 매일 돌린다</text>
+  <!-- abort gate marker -->
+  <line x1="190" y1="60" x2="190" y2="165" stroke="#e5533d" stroke-width="3" stroke-dasharray="6,4"/>
+  <text x="196" y="58" font-size="13" fill="#e5533d">안 꽂히면 여기서 깨끗하게 접기</text>
+</svg>
