@@ -191,11 +191,11 @@ export default function FtdPage() {
         <h4>날짜 세는 법 (이게 핵심!)</h4>
         <ol>
           <li><b>0일차(바닥)</b> — 가장 낮게 떨어진 날. 이 날의 <b>최저점이 마지노선</b>이에요.</li>
-          <li><b>1일차</b> — 바닥 다음에 <b>종가가 오른 첫 날</b>. 아무리 조금(+0.1%)이라도 오르면 1일차.</li>
+          <li><b>1일차</b> — 바닥 다음에 <b>종가가 오른 첫 날</b>. 아무리 조금(+0.1%)이라도 오르면 1일차. 살짝 내려 마감했어도 <b>봉의 위쪽 절반에서 마감</b>했다면 인정(&ldquo;핑크 랠리 데이&rdquo; — OR 조건).</li>
           <li><b>2·3일차</b> — 그냥 쉬어가는 날. 조용히 버티기.</li>
           <li><b>4일차 이후 = FTD 가능</b> — 주요 지수가 하루에 <span className="ftd-hl">+1% 이상 크게</span> 오르고 거래량도 늘면 상승 추세 시작 확인.</li>
         </ol>
-        <div className="ftd-warn"><b>리셋 규칙:</b> 0일차 최저점을 다시 깨면(undercut) 카운트 무효, 처음부터 다시 셉니다.</div>
+        <div className="ftd-warn"><b>리셋 규칙:</b> 0일차 최저점을 <b>장중에라도</b> 다시 깨면(undercut) 카운트 무효, 처음부터 다시 셉니다. 종가가 아니라 <b>장중 저가 기준</b> — 단, FTD 성립 <i>이후</i>의 실패 판정은 반대로 종가 기준이에요(아래 탈출 신호).</div>
       </div>
 
       <div className="ftd-card">
@@ -275,6 +275,7 @@ export default function FtdPage() {
               <p style={{ margin: "4px 0" }}><b style={{ color: "#111" }}>성공 약 50%</b> — 새 상승장 시작</p>
               <p style={{ margin: "4px 0" }}><b style={{ color: "#111" }}>실패 약 50%</b> — 며칠 뒤 무너짐</p>
               <p style={{ margin: "10px 0 0", fontSize: "0.82rem" }}>성공하는 FTD는 <b>25일 안에 &ldquo;추가 FTD&rdquo;</b>가 한 번 더 나와요.</p>
+              <p style={{ margin: "6px 0 0", fontSize: "0.82rem" }}>윌리엄오닐컴퍼니 공식 연구(1970~, S&amp;P 9%+ 조정 35회): <b>첫 FTD 성공 19회(54%)</b> · 첫 FTD 실패 8회는 <b>두 번째 FTD가 성공</b> — 리셋 후 빠른 재점등은 정상 패턴.</p>
             </div>
           </div>
         </div>
@@ -295,6 +296,12 @@ export default function FtdPage() {
           &ldquo;더러운 데이터는 위험한 데이터다. 실패한 건 그냥 실패한 거지, 거래량 탓이 아니다.&rdquo;
           <span>— Webby</span>
         </div>
+        <p style={{ fontSize: "0.86rem" }}>
+          다만 이건 Webby의 <b>현대 미국장 한정 의견</b>이고, 오닐 정본과 윌리엄오닐컴퍼니 현행 기준은 여전히
+          <span className="ftd-hl"> &ldquo;거래량 전일↑&rdquo;를 필수</span>로 봐요. 그래서 이 사이트의
+          <a href="https://ftd.shud26.com/now.html" style={{ color: "inherit" }}> 코스피 실황 판정</a>은 정본대로 거래량 조건을 요구하되,
+          가격만 충족한 날은 &ldquo;in spirit FTD&rdquo;로 따로 표시합니다 (2026-07 원전 대조 리서치 반영).
+        </p>
       </div>
 
       {/* ───────── 4. 투자자 ───────── */}
