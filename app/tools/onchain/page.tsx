@@ -2,14 +2,32 @@
 
 import { useState } from "react";
 
-// Base 체인 공개 RPC (CORS 허용되는 것 위주). 하나 막히면 다음 걸로.
-const RPCS = [
-  "https://base.llamarpc.com",
-  "https://mainnet.base.org",
-  "https://base.drpc.org",
-  "https://base.publicnode.com",
-];
-const WETH = "0x4200000000000000000000000000000000000006";
+// 체인별 설정: RPC(하나 막히면 다음), ETH 짝 토큰(WETH), 예시 토큰
+const CHAINS: Record<
+  string,
+  { name: string; rpcs: string[]; weth: string; example: string; note: string }
+> = {
+  base: {
+    name: "Base",
+    rpcs: [
+      "https://base.llamarpc.com",
+      "https://mainnet.base.org",
+      "https://base.drpc.org",
+      "https://base.publicnode.com",
+    ],
+    weth: "0x4200000000000000000000000000000000000006",
+    example: "0xa72c048366469d407a2739bfa58b6f5542f2a435", // SPACEX
+    note: "dexscreener.com에서 Base 밈코 주소 복사",
+  },
+  robinhood: {
+    name: "로빈훗",
+    rpcs: ["https://rpc.mainnet.chain.robinhood.com/"],
+    weth: "0x0bd7d308f8e1639fab988df18a8011f41eacad73", // WETH on Robinhood chain
+    example: "0x020bfc650a365f8bb26819deaabf3e21291018b4", // CASHCAT
+    note: "예: CASHCAT · GME(0xc2362aff…) · 활성 로빈훗 토큰",
+  },
+};
+let ACTIVE = CHAINS.base;
 const TRANSFER =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
@@ -27,7 +45,7 @@ const addrOf = (t: string) => "0x" + t.slice(-40).toLowerCase();
 
 async function rpc(method: string, params: unknown[]): Promise<unknown> {
   let lastErr: unknown;
-  for (const ep of RPCS) {
+  for (const ep of ACTIVE.rpcs) {
     try {
       const res = await fetch(ep, {
         method: "POST",
@@ -94,10 +112,12 @@ async function symbol(token: string): Promise<string> {
 }
 
 async function analyze(
+  chainKey: string,
   token: string,
   windowBlocks: number,
   onProgress: (s: string) => void
 ): Promise<{ rows: Row[]; pool: string; sym: string; price: number }> {
+  ACTIVE = CHAINS[chainKey];
   token = token.toLowerCase();
   onProgress("토큰 정보 읽는 중…");
   const [dec, sym] = await Promise.all([decimals(token), symbol(token)]);
@@ -109,7 +129,7 @@ async function analyze(
     (l) => l.data && l.data !== "0x"
   );
   if (tokLogs.length === 0)
-    throw new Error("이 구간에 거래가 없어요. Base 토큰이 맞는지, 활발한 토큰인지 확인해보세요.");
+    throw new Error("이 구간에 거래가 없어요. 선택한 체인의 토큰이 맞는지, 활발한 토큰인지 확인해보세요.");
 
   // 풀 = 가장 자주 등장하는 주소
   const freq: Record<string, number> = {};
@@ -120,8 +140,8 @@ async function analyze(
   const pool = Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
 
   onProgress("ETH 흐름 맞추는 중…");
-  const wethIn = await getLogs(WETH, fromB, latest, [TRANSFER, null, pad(pool)]); // 풀로 들어옴
-  const wethOut = await getLogs(WETH, fromB, latest, [TRANSFER, pad(pool)]); // 풀에서 나감
+  const wethIn = await getLogs(ACTIVE.weth, fromB, latest, [TRANSFER, null, pad(pool)]); // 풀로 들어옴
+  const wethOut = await getLogs(ACTIVE.weth, fromB, latest, [TRANSFER, pad(pool)]); // 풀에서 나감
   const wIn: Record<string, number> = {};
   const wOut: Record<string, number> = {};
   for (const l of wethIn)
@@ -174,23 +194,31 @@ async function analyze(
 }
 
 export default function OnchainTool() {
-  const [token, setToken] = useState("0xa72c048366469d407a2739bfa58b6f5542f2a435");
+  const [chain, setChain] = useState("base");
+  const [token, setToken] = useState(CHAINS.base.example);
   const [win, setWin] = useState(15000);
   const [busy, setBusy] = useState(false);
   const [prog, setProg] = useState("");
   const [err, setErr] = useState("");
   const [res, setRes] = useState<Awaited<ReturnType<typeof analyze>> | null>(null);
 
+  function switchChain(key: string) {
+    setChain(key);
+    setToken(CHAINS[key].example);
+    setRes(null);
+    setErr("");
+  }
+
   async function run() {
     setErr("");
     setRes(null);
     if (!/^0x[0-9a-fA-F]{40}$/.test(token.trim())) {
-      setErr("0x로 시작하는 40자리 토큰 주소를 넣어주세요 (Base 체인).");
+      setErr("0x로 시작하는 40자리 토큰 주소를 넣어주세요.");
       return;
     }
     setBusy(true);
     try {
-      const r = await analyze(token.trim(), win, setProg);
+      const r = await analyze(chain, token.trim(), win, setProg);
       setRes(r);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "실패했어요. 잠시 후 다시 시도해보세요.");
@@ -209,19 +237,25 @@ export default function OnchainTool() {
     <div>
       <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: "0 0 0.4rem" }}>온체인 손익 조회기</h1>
       <p style={{ color: "#6b7280", fontSize: "0.9rem", margin: "0 0 0.4rem", lineHeight: 1.7 }}>
-        Base 체인 토큰 주소를 넣으면, 그 코인을 사고판 지갑들의 손익을 계산합니다. 브라우저에서 직접 온체인을 조회해요.
+        토큰 주소를 넣으면, 그 코인을 사고판 지갑들의 손익을 계산합니다. Base와 로빈훗 체인 지원, 브라우저에서 직접 온체인을 조회해요.
       </p>
       <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "0.6rem 0.9rem", fontSize: "0.78rem", color: "#6b7280", marginBottom: "1.1rem", lineHeight: 1.6 }}>
         학습·실험용 근사 도구입니다. 투자 조언이 아니며, 최근 구간만 보고 봇은 완벽히 걸러지지 않습니다. 자세한 원리는 <a href="/posts/onchain-reading-3-who-won" style={{ color: "#111" }}>온체인 읽기 3편</a> 참고.
       </div>
 
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
+        <select value={chain} onChange={(e) => switchChain(e.target.value)}
+          style={{ padding: "0.5rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.85rem", fontWeight: 600 }}>
+          {Object.entries(CHAINS).map(([k, c]) => (
+            <option key={k} value={k}>{c.name}</option>
+          ))}
+        </select>
         <input
           value={token}
           onChange={(e) => setToken(e.target.value)}
-          placeholder="0x… (Base 토큰 주소)"
+          placeholder="0x… (토큰 주소)"
           spellCheck={false}
-          style={{ flex: "1 1 320px", padding: "0.5rem 0.7rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.85rem", fontFamily: "monospace" }}
+          style={{ flex: "1 1 300px", padding: "0.5rem 0.7rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.85rem", fontFamily: "monospace" }}
         />
         <select value={win} onChange={(e) => setWin(Number(e.target.value))}
           style={{ padding: "0.5rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.85rem" }}>
@@ -235,7 +269,7 @@ export default function OnchainTool() {
         </button>
       </div>
       <p style={{ fontSize: "0.78rem", color: "#9ca3af", margin: "0 0 1rem" }}>
-        예: dexscreener.com에서 Base 밈코인 주소를 복사해 넣어보세요.
+        {CHAINS[chain].note}
       </p>
 
       {prog && <p style={{ fontSize: "0.85rem", color: "#4b5563" }}>⏳ {prog}</p>}
