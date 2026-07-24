@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 230" font-family="system-ui, sans-serif">
+  <rect width="820" height="230" fill="#f9fafb"/>
+  <text x="30" y="34" font-size="17" font-weight="700" fill="#111">카피/검증 봇 — 파이프라인</text>
+  <text x="30" y="54" font-size="12" fill="#9ca3af">실제 돈은 3단계(검증)를 통과한 지갑에만. 앞 두 단계는 돈 안 들어감.</text>
+
+  <g>
+    <rect x="14"  y="80" width="150" height="76" rx="10" fill="#eef2ff" stroke="#c7d2fe"/>
+    <rect x="180" y="80" width="150" height="76" rx="10" fill="#e0f2fe" stroke="#bae6fd"/>
+    <rect x="346" y="80" width="150" height="76" rx="10" fill="#dcfce7" stroke="#86efac"/>
+    <rect x="512" y="80" width="150" height="76" rx="10" fill="#fef9c3" stroke="#fde68a"/>
+    <rect x="678" y="80" width="128" height="76" rx="10" fill="#f3e8ff" stroke="#e9d5ff"/>
+  </g>
+  <g fill="#94a3b8">
+    <polygon points="164,118 180,112 180,124"/>
+    <polygon points="330,118 346,112 346,124"/>
+    <polygon points="496,118 512,112 512,124"/>
+    <polygon points="662,118 678,112 678,124"/>
+  </g>
+  <g text-anchor="middle" fill="#111">
+    <text x="89"  y="112" font-size="13" font-weight="700">① 발굴</text>
+    <text x="89"  y="132" font-size="10.5" fill="#4b5563">내 툴로 승자</text>
+    <text x="89"  y="146" font-size="10.5" fill="#4b5563">지갑 찾기</text>
+    <text x="255" y="112" font-size="13" font-weight="700">② 검증</text>
+    <text x="255" y="132" font-size="10.5" fill="#4b5563">이 신호 따라했으면</text>
+    <text x="255" y="146" font-size="10.5" fill="#4b5563">벌었나? 백테스트</text>
+    <text x="421" y="112" font-size="13" font-weight="700">③ 감시</text>
+    <text x="421" y="132" font-size="10.5" fill="#4b5563">통과 지갑의</text>
+    <text x="421" y="146" font-size="10.5" fill="#4b5563">새 매수 폴링</text>
+    <text x="587" y="112" font-size="13" font-weight="700">④ 미러</text>
+    <text x="587" y="132" font-size="10.5" fill="#4b5563">소액 따라 사기</text>
+    <text x="587" y="146" font-size="10.5" fill="#4b5563">+ 하드 손절</text>
+    <text x="742" y="112" font-size="13" font-weight="700">⑤ 기록</text>
+    <text x="742" y="132" font-size="10.5" fill="#4b5563">모든 체결</text>
+    <text x="742" y="146" font-size="10.5" fill="#4b5563">→ 연재 데이터</text>
+  </g>
+  <text x="30" y="200" font-size="12" fill="#6b7280">③부터 실자본. ①② 통과 못 한 지갑은 카피 안 함 = "5연승이 운이면 거른다".</text>
+  <text x="30" y="220" font-size="12" fill="#6b7280">거래당 손실 상한 · 일일 서킷브레이커 · 오류 시 자동 청산 · 무인 1주.</text>
+</svg>
