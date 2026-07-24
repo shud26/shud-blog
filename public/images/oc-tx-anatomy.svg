@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 320" font-family="system-ui, sans-serif">
+  <rect width="820" height="320" fill="#f9fafb"/>
+  <text x="30" y="34" font-size="17" font-weight="700" fill="#111">거래 하나 해부 — 토큰 매수</text>
+  <text x="30" y="54" font-size="12" fill="#9ca3af">돈은 오른쪽으로 들어가고(윗줄), 토큰은 왼쪽으로 돌아온다(아랫줄).</text>
+
+  <!-- boxes -->
+  <g>
+    <rect x="30"  y="120" width="180" height="80" rx="12" fill="#eef2ff" stroke="#c7d2fe"/>
+    <rect x="320" y="120" width="180" height="80" rx="12" fill="#e0f2fe" stroke="#bae6fd"/>
+    <rect x="610" y="120" width="180" height="80" rx="12" fill="#dcfce7" stroke="#bbf7d0"/>
+  </g>
+  <g text-anchor="middle" fill="#111">
+    <text x="120" y="155" font-size="15" font-weight="700">산 사람</text>
+    <text x="120" y="178" font-size="11" fill="#6b7280">0xf32f…79d2</text>
+    <text x="410" y="155" font-size="15" font-weight="700">라우터</text>
+    <text x="410" y="178" font-size="11" fill="#6b7280">거래 창구</text>
+    <text x="700" y="155" font-size="15" font-weight="700">유동성 풀</text>
+    <text x="700" y="178" font-size="11" fill="#6b7280">토큰↔ETH 교환소</text>
+  </g>
+
+  <!-- top arrows: money in -->
+  <g stroke="#4f46e5" stroke-width="2.5" fill="none">
+    <line x1="210" y1="150" x2="312" y2="150"/>
+    <line x1="500" y1="150" x2="602" y2="150"/>
+  </g>
+  <g fill="#4f46e5">
+    <polygon points="312,150 300,144 300,156"/>
+    <polygon points="602,150 590,144 590,156"/>
+  </g>
+  <g font-size="12" fill="#4f46e5" text-anchor="middle" font-weight="600">
+    <text x="261" y="140">0.0116 ETH</text>
+    <text x="551" y="140">WETH로</text>
+  </g>
+
+  <!-- bottom return arrow: token out -->
+  <path d="M700,200 L700,255 L120,255 L120,204" stroke="#16a34a" stroke-width="2.5" fill="none"/>
+  <polygon points="120,204 114,216 126,216" fill="#16a34a"/>
+  <text x="410" y="248" font-size="13" fill="#16a34a" text-anchor="middle" font-weight="700">SPACEX 29,054,857개 → 산 사람 지갑으로</text>
+
+  <text x="30" y="300" font-size="12" fill="#9ca3af">겉 필드(from·to·value)는 "누가 창구에 얼마 냈나"까지. 진짜 받은 토큰은 이벤트 로그에 있다.</text>
+</svg>
