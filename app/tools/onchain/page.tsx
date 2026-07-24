@@ -33,6 +33,11 @@ let ACTIVE = CHAINS.base;
 const TRANSFER =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
+// 초활성 체인(로빈훗 100ms)에서 조회가 폭주하지 않게 호출 상한. 넘으면 일부만 보고 중단.
+let CALLS = 0;
+let TRUNCATED = false;
+const MAX_CALLS = 90;
+
 type LogItem = {
   topics: string[];
   data: string;
@@ -78,7 +83,9 @@ async function getLogs(
   const out: LogItem[] = [];
   const MAXSPAN = 40000;
   async function fetchSpan(a: number, b: number, depth = 0): Promise<void> {
+    if (CALLS >= MAX_CALLS) { TRUNCATED = true; return; } // 상한 도달 → 있는 것까지만
     try {
+      CALLS++;
       const r = (await rpc("eth_getLogs", [
         { fromBlock: "0x" + a.toString(16), toBlock: "0x" + b.toString(16), address, topics },
       ])) as LogItem[];
@@ -138,8 +145,10 @@ async function analyze(
   token: string,
   hours: number,
   onProgress: (s: string) => void
-): Promise<{ rows: Row[]; pool: string; sym: string; price: number }> {
+): Promise<{ rows: Row[]; pool: string; sym: string; price: number; truncated: boolean }> {
   ACTIVE = CHAINS[chainKey];
+  CALLS = 0;
+  TRUNCATED = false;
   token = token.toLowerCase();
   onProgress("토큰 정보 읽는 중…");
   const [dec, sym] = await Promise.all([decimals(token), symbol(token)]);
@@ -214,7 +223,7 @@ async function analyze(
     return { w, pnl: d.got - d.spent + hold * price, spent: d.spent, got: d.got, hold };
   });
   rows.sort((a, b) => b.pnl - a.pnl);
-  return { rows, pool, sym, price };
+  return { rows, pool, sym, price, truncated: TRUNCATED };
 }
 
 export default function OnchainTool() {
@@ -229,6 +238,7 @@ export default function OnchainTool() {
   function switchChain(key: string) {
     setChain(key);
     setToken(CHAINS[key].example);
+    setHours(key === "robinhood" ? 2 : 24); // 로빈훗은 초활성이라 짧게 기본
     setRes(null);
     setErr("");
   }
@@ -283,9 +293,10 @@ export default function OnchainTool() {
         />
         <select value={hours} onChange={(e) => setHours(Number(e.target.value))}
           style={{ padding: "0.5rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.85rem" }}>
+          <option value={0.5}>최근 30분</option>
+          <option value={2}>최근 2시간</option>
           <option value={6}>최근 6시간</option>
           <option value={24}>최근 1일</option>
-          <option value={72}>최근 3일 (느림)</option>
         </select>
         <button onClick={run} disabled={busy}
           style={{ padding: "0.5rem 1.1rem", border: "none", borderRadius: 8, background: busy ? "#9ca3af" : "#111", color: "#fff", fontWeight: 600, fontSize: "0.85rem", cursor: busy ? "default" : "pointer" }}>
@@ -309,6 +320,11 @@ export default function OnchainTool() {
               플러스 <b style={{ color: winners ? "#15803d" : "#b91c1c" }}>{winners}</b> / {res.rows.length}
             </span>
           </div>
+          {res.truncated && (
+            <p style={{ fontSize: "0.8rem", color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "0.5rem 0.8rem", marginBottom: "0.8rem" }}>
+              ⚠️ 이 토큰이 너무 활발해서 구간 일부만 분석했어요. 더 짧은 창(30분·2시간)으로 다시 보면 정확합니다.
+            </p>
+          )}
           <div style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", fontSize: "0.82rem", width: "100%" }}>
               <thead>
