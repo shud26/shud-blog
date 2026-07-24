@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 360" font-family="system-ui, sans-serif">
+  <rect width="820" height="360" fill="#f9fafb"/>
+  <text x="30" y="34" font-size="17" font-weight="700" fill="#111">SPACEX 매매 지갑 손익 (ETH)</text>
+  <text x="30" y="54" font-size="12" fill="#9ca3af">보유분은 현재가로 평가. 딱 한 명 빼고 전부 마이너스.</text>
+
+  <!-- zero axis -->
+  <line x1="650" y1="80" x2="650" y2="330" stroke="#9ca3af" stroke-width="1.5"/>
+  <text x="654" y="94" font-size="11" fill="#9ca3af">0</text>
+
+  <!-- rows: (label, pnl) scale 5600 px per ETH, zero at x=650 -->
+  <!-- 0xb213 +0.003 -->
+  <rect x="650" y="92"  width="17"  height="24" fill="#16a34a"/>
+  <text x="120" y="109" font-size="12" fill="#374151" text-anchor="end">0xb213…  (사고 팔고 나감)</text>
+  <text x="674" y="109" font-size="12" fill="#166534" font-weight="700">+0.003</text>
+
+  <!-- 0xf32f -0.022 (ep1) -->
+  <rect x="527" y="128" width="123" height="24" fill="#f59e0b"/>
+  <text x="120" y="145" font-size="12" fill="#b45309" text-anchor="end" font-weight="700">0xf32f…79d2  ← 1편의 그 사람</text>
+  <text x="519" y="145" font-size="12" fill="#b45309" text-anchor="end" font-weight="700">-0.022</text>
+
+  <!-- 0x27f4 -0.040 -->
+  <rect x="426" y="164" width="224" height="24" fill="#ef4444"/>
+  <text x="120" y="181" font-size="12" fill="#374151" text-anchor="end">0x27f4…  (사서 거의 홀드)</text>
+  <text x="418" y="181" font-size="12" fill="#b91c1c" text-anchor="end">-0.040</text>
+
+  <!-- 0x3025 -0.085 -->
+  <rect x="174" y="200" width="476" height="24" fill="#ef4444"/>
+  <text x="120" y="217" font-size="12" fill="#374151" text-anchor="end">0x3025…  (사서 안 팜)</text>
+  <text x="166" y="217" font-size="12" fill="#b91c1c" text-anchor="end">-0.085</text>
+
+  <!-- 0x99dd -0.096 -->
+  <rect x="112" y="236" width="538" height="24" fill="#dc2626"/>
+  <text x="120" y="253" font-size="12" fill="#374151" text-anchor="end">0x99dd…  (사서 안 팜)</text>
+  <text x="104" y="253" font-size="12" fill="#b91c1c" text-anchor="end">-0.096</text>
+
+  <!-- 0x4a8d -0.097 -->
+  <rect x="107" y="272" width="543" height="24" fill="#dc2626"/>
+  <text x="120" y="289" font-size="12" fill="#374151" text-anchor="end">0x4a8d…  (사서 안 팜)</text>
+  <text x="99" y="289" font-size="12" fill="#b91c1c" text-anchor="end">-0.097</text>
+
+  <text x="30" y="330" font-size="12" fill="#9ca3af">유일한 승자는 "받은 ETH &gt; 낸 ETH"인 지갑. 나머지는 냈는데 못 회수하고 물려 있다.</text>
+</svg>
