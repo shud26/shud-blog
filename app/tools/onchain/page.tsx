@@ -45,6 +45,8 @@ type Row = { w: string; pnl: number; spent: number; got: number; hold: number };
 const pad = (a: string) => "0x" + a.slice(2).toLowerCase().padStart(64, "0");
 const addrOf = (t: string) => "0x" + t.slice(-40).toLowerCase();
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function rpc(method: string, params: unknown[]): Promise<unknown> {
   let lastErr: unknown;
   for (const ep of ACTIVE.rpcs) {
@@ -54,6 +56,7 @@ async function rpc(method: string, params: unknown[]): Promise<unknown> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
       });
+      if (res.status === 429) throw new Error("rate-limit");
       const j = await res.json();
       if (j.error) throw new Error(j.error.message || "rpc error");
       return j.result;
@@ -73,18 +76,29 @@ async function getLogs(
   topics: (string | null)[]
 ): Promise<LogItem[]> {
   const out: LogItem[] = [];
-  const MAXSPAN = 200000;
-  async function fetchSpan(a: number, b: number): Promise<void> {
+  const MAXSPAN = 40000;
+  async function fetchSpan(a: number, b: number, depth = 0): Promise<void> {
     try {
       const r = (await rpc("eth_getLogs", [
         { fromBlock: "0x" + a.toString(16), toBlock: "0x" + b.toString(16), address, topics },
       ])) as LogItem[];
       out.push(...(r || []));
+      await sleep(100); // RPC 살살
     } catch (e) {
-      if (b - a <= 2000) return; // 더 못 쪼개면 포기
-      const mid = Math.floor((a + b) / 2);
-      await fetchSpan(a, mid);
-      await fetchSpan(mid + 1, b);
+      const msg = String((e as Error)?.message || e).toLowerCase();
+      const tooBig = /exceed|limit|too large|range|10000/.test(msg);
+      if (tooBig && b - a > 1500) {
+        const mid = Math.floor((a + b) / 2); // 결과가 너무 많음 → 반으로 쪼갬
+        await fetchSpan(a, mid);
+        await fetchSpan(mid + 1, b);
+      } else if (depth < 4) {
+        await sleep(700 * (depth + 1)); // 429·일시 오류 → 잠깐 쉬고 재시도
+        await fetchSpan(a, b, depth + 1);
+      } else if (b - a > 1500) {
+        const mid = Math.floor((a + b) / 2);
+        await fetchSpan(a, mid);
+        await fetchSpan(mid + 1, b);
+      }
     }
   }
   for (let b = fromB; b <= toB; b += MAXSPAN) {
