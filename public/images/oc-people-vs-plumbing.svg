@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 300" font-family="system-ui, sans-serif">
+  <rect width="820" height="300" fill="#f9fafb"/>
+  <text x="30" y="34" font-size="17" font-weight="700" fill="#111">긁어온 목록엔 사람과 배관이 섞여 있다</text>
+  <text x="30" y="54" font-size="12" fill="#9ca3af">"누가 샀나"를 알려면, 진짜 지갑에서 거래 장치를 걸러내야 한다.</text>
+
+  <!-- people -->
+  <rect x="30" y="80" width="360" height="185" rx="12" fill="#dcfce7" stroke="#bbf7d0"/>
+  <text x="50" y="108" font-size="14" font-weight="700" fill="#166534">사람 (진짜 매수자)</text>
+  <g font-size="12" fill="#374151">
+    <text x="50" y="138">0xf32f…79d2 — 1편의 그 사람, 4번 삼</text>
+    <text x="50" y="164">0x639f…8bc1</text>
+    <text x="50" y="190">0xb213…b9d8</text>
+    <text x="50" y="216">0x22f3…a3d4</text>
+    <text x="50" y="242">… 실제 지갑들</text>
+  </g>
+
+  <!-- plumbing -->
+  <rect x="430" y="80" width="360" height="185" rx="12" fill="#fee2e2" stroke="#fecaca"/>
+  <text x="450" y="108" font-size="14" font-weight="700" fill="#b91c1c">배관 (걸러낼 것)</text>
+  <g font-size="12" fill="#374151">
+    <text x="450" y="138">0x4752…ad24 — 라우터(거래 창구)</text>
+    <text x="450" y="164">0x2407…8c0e — 유동성 풀</text>
+    <text x="450" y="190">0xc0ffee… — MEV 봇</text>
+    <text x="450" y="222">이것들이 "1위 매수자"로 뜨면</text>
+    <text x="450" y="242">가짜 결론이 된다</text>
+  </g>
+</svg>
