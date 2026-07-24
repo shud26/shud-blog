@@ -5,7 +5,7 @@ import { useState } from "react";
 // 체인별 설정: RPC(하나 막히면 다음), ETH 짝 토큰(WETH), 예시 토큰
 const CHAINS: Record<
   string,
-  { name: string; rpcs: string[]; weth: string; example: string; note: string }
+  { name: string; rpcs: string[]; weth: string; example: string; note: string; blockSec: number }
 > = {
   base: {
     name: "Base",
@@ -18,6 +18,7 @@ const CHAINS: Record<
     weth: "0x4200000000000000000000000000000000000006",
     example: "0xa72c048366469d407a2739bfa58b6f5542f2a435", // SPACEX
     note: "dexscreener.com에서 Base 밈코 주소 복사",
+    blockSec: 2, // Base ≈ 2초/블록
   },
   robinhood: {
     name: "로빈훗",
@@ -25,6 +26,7 @@ const CHAINS: Record<
     weth: "0x0bd7d308f8e1639fab988df18a8011f41eacad73", // WETH on Robinhood chain
     example: "0x020bfc650a365f8bb26819deaabf3e21291018b4", // CASHCAT
     note: "예: CASHCAT · GME(0xc2362aff…) · 활성 로빈훗 토큰",
+    blockSec: 0.1, // 로빈훗 ≈ 100ms/블록 (Base보다 20배 빠름)
   },
 };
 let ACTIVE = CHAINS.base;
@@ -62,6 +64,8 @@ async function rpc(method: string, params: unknown[]): Promise<unknown> {
   throw lastErr ?? new Error("모든 RPC 실패");
 }
 
+// 넓은 구간도 안 깨지게: 큰 청크로 시도하다 RPC가 거부하면(로그 1만 초과·범위 초과 등)
+// 그 구간을 반으로 쪼개서 재시도. 체인·토큰 활성도에 상관없이 견고.
 async function getLogs(
   address: string,
   fromB: number,
@@ -69,18 +73,22 @@ async function getLogs(
   topics: (string | null)[]
 ): Promise<LogItem[]> {
   const out: LogItem[] = [];
-  const CHUNK = 2000;
-  for (let b = fromB; b <= toB; b += CHUNK + 1) {
-    const to = Math.min(b + CHUNK, toB);
-    const r = (await rpc("eth_getLogs", [
-      {
-        fromBlock: "0x" + b.toString(16),
-        toBlock: "0x" + to.toString(16),
-        address,
-        topics,
-      },
-    ])) as LogItem[];
-    out.push(...(r || []));
+  const MAXSPAN = 200000;
+  async function fetchSpan(a: number, b: number): Promise<void> {
+    try {
+      const r = (await rpc("eth_getLogs", [
+        { fromBlock: "0x" + a.toString(16), toBlock: "0x" + b.toString(16), address, topics },
+      ])) as LogItem[];
+      out.push(...(r || []));
+    } catch (e) {
+      if (b - a <= 2000) return; // 더 못 쪼개면 포기
+      const mid = Math.floor((a + b) / 2);
+      await fetchSpan(a, mid);
+      await fetchSpan(mid + 1, b);
+    }
+  }
+  for (let b = fromB; b <= toB; b += MAXSPAN) {
+    await fetchSpan(b, Math.min(b + MAXSPAN - 1, toB));
   }
   return out;
 }
@@ -114,7 +122,7 @@ async function symbol(token: string): Promise<string> {
 async function analyze(
   chainKey: string,
   token: string,
-  windowBlocks: number,
+  hours: number,
   onProgress: (s: string) => void
 ): Promise<{ rows: Row[]; pool: string; sym: string; price: number }> {
   ACTIVE = CHAINS[chainKey];
@@ -122,7 +130,9 @@ async function analyze(
   onProgress("토큰 정보 읽는 중…");
   const [dec, sym] = await Promise.all([decimals(token), symbol(token)]);
   const latest = parseInt((await rpc("eth_blockNumber", [])) as string, 16);
-  const fromB = latest - windowBlocks;
+  // 시간 → 블록 수 (체인 블록 속도로 환산). 로빈훗은 100ms라 같은 시간이라도 블록이 훨씬 많음.
+  const windowBlocks = Math.round((hours * 3600) / ACTIVE.blockSec);
+  const fromB = Math.max(0, latest - windowBlocks);
 
   onProgress("토큰 거래 기록 긁는 중…");
   const tokLogs = (await getLogs(token, fromB, latest, [TRANSFER])).filter(
@@ -196,7 +206,7 @@ async function analyze(
 export default function OnchainTool() {
   const [chain, setChain] = useState("base");
   const [token, setToken] = useState(CHAINS.base.example);
-  const [win, setWin] = useState(15000);
+  const [hours, setHours] = useState(24);
   const [busy, setBusy] = useState(false);
   const [prog, setProg] = useState("");
   const [err, setErr] = useState("");
@@ -218,7 +228,7 @@ export default function OnchainTool() {
     }
     setBusy(true);
     try {
-      const r = await analyze(chain, token.trim(), win, setProg);
+      const r = await analyze(chain, token.trim(), hours, setProg);
       setRes(r);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "실패했어요. 잠시 후 다시 시도해보세요.");
@@ -257,11 +267,11 @@ export default function OnchainTool() {
           spellCheck={false}
           style={{ flex: "1 1 300px", padding: "0.5rem 0.7rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.85rem", fontFamily: "monospace" }}
         />
-        <select value={win} onChange={(e) => setWin(Number(e.target.value))}
+        <select value={hours} onChange={(e) => setHours(Number(e.target.value))}
           style={{ padding: "0.5rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.85rem" }}>
-          <option value={8000}>최근 8천 블록</option>
-          <option value={15000}>최근 1.5만 블록</option>
-          <option value={30000}>최근 3만 블록</option>
+          <option value={6}>최근 6시간</option>
+          <option value={24}>최근 1일</option>
+          <option value={72}>최근 3일 (느림)</option>
         </select>
         <button onClick={run} disabled={busy}
           style={{ padding: "0.5rem 1.1rem", border: "none", borderRadius: 8, background: busy ? "#9ca3af" : "#111", color: "#fff", fontWeight: 600, fontSize: "0.85rem", cursor: busy ? "default" : "pointer" }}>
