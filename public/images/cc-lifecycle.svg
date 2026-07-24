@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 420" font-family="system-ui, sans-serif">
+  <rect width="800" height="420" fill="#f9fafb"/>
+  <text x="30" y="34" font-size="17" font-weight="700" fill="#111">밈코인 한살이 — 개념도</text>
+  <text x="30" y="54" font-size="12" fill="#9ca3af">실제 수치 아님. 성장 구조를 이해하기 위한 그림.</text>
+
+  <!-- phase 2 supported zone -->
+  <rect x="284" y="60" width="266" height="300" fill="#dcfce7" opacity="0.6"/>
+  <!-- axes -->
+  <line x1="60" y1="360" x2="770" y2="360" stroke="#d1d5db" stroke-width="1.5"/>
+  <line x1="60" y1="60" x2="60" y2="360" stroke="#d1d5db" stroke-width="1.5"/>
+  <text x="30" y="70" font-size="11" fill="#9ca3af">FDV</text>
+  <text x="720" y="384" font-size="11" fill="#9ca3af">시간 →</text>
+
+  <!-- price curve -->
+  <polyline fill="none" stroke="#16a34a" stroke-width="3"
+    points="60,348 130,342 186,330 235,336 284,315 340,276 396,225 452,162 508,96 550,60 592,120 641,195 690,246 760,285"/>
+  <!-- peak / end dots -->
+  <circle cx="550" cy="60" r="5" fill="#16a34a"/>
+  <circle cx="760" cy="285" r="5" fill="#dc2626"/>
+
+  <!-- labels -->
+  <text x="150" y="392" font-size="12" fill="#374151" text-anchor="middle">Phase 1</text>
+  <text x="150" y="408" font-size="11" fill="#9ca3af" text-anchor="middle">시드 펌핑</text>
+
+  <text x="417" y="392" font-size="12" fill="#166534" text-anchor="middle" font-weight="700">Phase 2 (세력이 받쳐주는 구간)</text>
+  <text x="417" y="408" font-size="11" fill="#166534" text-anchor="middle">$4~5M 투입 · 매도 물량 흡수하며 지지</text>
+
+  <text x="556" y="52" font-size="12" fill="#166534" font-weight="700">200M 도달</text>
+  <text x="655" y="392" font-size="12" fill="#b91c1c" text-anchor="middle">세력 이탈 →</text>
+  <text x="655" y="408" font-size="11" fill="#b91c1c" text-anchor="middle">50M 직행</text>
+</svg>
