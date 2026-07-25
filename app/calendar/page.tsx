@@ -14,8 +14,8 @@ type Entry = { month: number; day: number; author: "S" | "C"; done: boolean; tex
 const YEAR = 2026;
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const MILESTONES = [
-  { month: 8, day: 1, label: "코인던전 공개" },
   { month: 8, day: 6, label: "바운티 제출" },
+  { month: 8, day: 21, label: "바운티 발표" },
 ];
 
 function loadEntries(): Entry[] {
