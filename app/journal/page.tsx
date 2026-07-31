@@ -54,7 +54,30 @@ function loadEntries(): Entry[] {
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
-/* 템플릿이 쓰는 마크다운 부분집합만 렌더: ## 제목 / | 표 | / - 리스트 / 문단 */
+/* 인라인 서식: **굵게** 와 `코드`.
+   이게 없던 동안 일지 본문의 별표·백틱이 화면에 그대로 찍혔다(2026-07-31 기준 230개). */
+function inline(text: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  const re = /\*\*([^*]+)\*\*|`([^`]+)`/g;
+  let last = 0;
+  let k = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    if (m[1] !== undefined) {
+      out.push(<b key={k++} style={{ color: "#111", fontWeight: 700 }}>{m[1]}</b>);
+    } else {
+      out.push(
+        <code key={k++} style={{ background: "#f3f4f6", borderRadius: 3, padding: "0.05rem 0.25rem", fontSize: "0.92em" }}>{m[2]}</code>
+      );
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+/* 템플릿이 쓰는 마크다운 부분집합만 렌더: ## 제목 / > 인용 / | 표 | / - 리스트 / 문단 */
 function renderBody(body: string) {
   const blocks: React.ReactNode[] = [];
   const lines = body.split("\n");
@@ -69,10 +92,21 @@ function renderBody(body: string) {
     if (line.startsWith("## ")) {
       blocks.push(
         <h4 key={k++} style={{ fontSize: "0.82rem", fontWeight: 700, color: "#6b7280", margin: "0.9rem 0 0.3rem", letterSpacing: "0.02em" }}>
-          {line.slice(3)}
+          {inline(line.slice(3))}
         </h4>
       );
       i++;
+    } else if (line.startsWith(">")) {
+      const quoted: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith(">")) {
+        quoted.push(lines[i].trim().replace(/^>\s?/, ""));
+        i++;
+      }
+      blocks.push(
+        <blockquote key={k++} style={{ margin: "0.5rem 0", padding: "0.5rem 0.8rem", borderLeft: "3px solid #d1d5db", background: "#f9fafb", fontSize: "0.85rem", lineHeight: 1.7, color: "#4b5563" }}>
+          {inline(quoted.join(" "))}
+        </blockquote>
+      );
     } else if (line.startsWith("|")) {
       const rows: string[][] = [];
       while (i < lines.length && lines[i].trim().startsWith("|")) {
@@ -87,7 +121,7 @@ function renderBody(body: string) {
               <thead>
                 <tr>
                   {rows[0].map((c, ci) => (
-                    <th key={ci} style={{ border: "1px solid #e5e7eb", padding: "0.25rem 0.6rem", background: "#f9fafb", fontWeight: 600, textAlign: "left" }}>{c}</th>
+                    <th key={ci} style={{ border: "1px solid #e5e7eb", padding: "0.25rem 0.6rem", background: "#f9fafb", fontWeight: 600, textAlign: "left" }}>{inline(c)}</th>
                   ))}
                 </tr>
               </thead>
@@ -95,7 +129,7 @@ function renderBody(body: string) {
                 {rows.slice(1).map((r, ri) => (
                   <tr key={ri}>
                     {r.map((c, ci) => (
-                      <td key={ci} style={{ border: "1px solid #e5e7eb", padding: "0.25rem 0.6rem" }}>{c}</td>
+                      <td key={ci} style={{ border: "1px solid #e5e7eb", padding: "0.25rem 0.6rem" }}>{inline(c)}</td>
                     ))}
                   </tr>
                 ))}
@@ -112,13 +146,13 @@ function renderBody(body: string) {
       blocks.push(
         <ul key={k++} style={{ margin: "0.2rem 0", paddingLeft: "1.1rem" }}>
           {items.map((it, ii) => (
-            <li key={ii} style={{ fontSize: "0.88rem", lineHeight: 1.7 }}>{it}</li>
+            <li key={ii} style={{ fontSize: "0.88rem", lineHeight: 1.7 }}>{inline(it)}</li>
           ))}
         </ul>
       );
     } else {
       blocks.push(
-        <p key={k++} style={{ fontSize: "0.88rem", margin: "0.2rem 0", lineHeight: 1.7 }}>{line}</p>
+        <p key={k++} style={{ fontSize: "0.88rem", margin: "0.2rem 0", lineHeight: 1.7 }}>{inline(line)}</p>
       );
       i++;
     }
