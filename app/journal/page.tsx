@@ -89,7 +89,20 @@ function renderBody(body: string) {
       i++;
       continue;
     }
-    if (line.startsWith("## ")) {
+    if (line.startsWith("```")) {
+      i++;
+      const code: string[] = [];
+      while (i < lines.length && !lines[i].trim().startsWith("```")) {
+        code.push(lines[i]);
+        i++;
+      }
+      i++; // 닫는 펜스
+      blocks.push(
+        <pre key={k++} style={{ margin: "0.5rem 0", padding: "0.6rem 0.8rem", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 6, overflowX: "auto", fontSize: "0.8rem", lineHeight: 1.6 }}>
+          {code.join("\n")}
+        </pre>
+      );
+    } else if (line.startsWith("## ")) {
       blocks.push(
         <h4 key={k++} style={{ fontSize: "0.82rem", fontWeight: 700, color: "#6b7280", margin: "0.9rem 0 0.3rem", letterSpacing: "0.02em" }}>
           {inline(line.slice(3))}
@@ -151,10 +164,19 @@ function renderBody(body: string) {
         </ul>
       );
     } else {
+      // 연속한 일반 줄은 한 문단으로 합친다. 줄 단위로 끊으면 줄바꿈을 가로지르는
+      // **굵게** 가 매칭되지 않아 별표가 그대로 보인다(2026-07-28 일지에서 발생).
+      const para: string[] = [];
+      while (i < lines.length) {
+        const cur = lines[i].trim();
+        if (!cur || cur.startsWith("## ") || cur.startsWith(">") || cur.startsWith("|") ||
+            cur.startsWith("- ") || cur.startsWith("```")) break;
+        para.push(cur);
+        i++;
+      }
       blocks.push(
-        <p key={k++} style={{ fontSize: "0.88rem", margin: "0.2rem 0", lineHeight: 1.7 }}>{inline(line)}</p>
+        <p key={k++} style={{ fontSize: "0.88rem", margin: "0.4rem 0", lineHeight: 1.7 }}>{inline(para.join(" "))}</p>
       );
-      i++;
     }
   }
   return blocks;
