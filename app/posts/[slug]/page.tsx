@@ -1,5 +1,6 @@
 import { getPost, getAllSlugs, getAllPosts, getPostImage } from "@/lib/posts";
 import { MDXRemote } from "next-mdx-remote/rsc";
+import remarkGfm from "remark-gfm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -58,7 +59,10 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
 
       {/* 본문 */}
       <div className="prose">
-        <MDXRemote source={post.content} />
+        <MDXRemote
+          source={post.content}
+          options={{ mdxOptions: { remarkPlugins: [remarkGfm] } }}
+        />
       </div>
 
       {/* 관련 글 */}

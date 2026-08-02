@@ -82,6 +82,26 @@ body {
 
 .prose strong { font-weight: 600; }
 
+.prose img { max-width: 100%; height: auto; border-radius: 10px; display: block; margin: 1.75rem 0 0.5rem; }
+
+/* ── 본문 도표 ── */
+.prose figure.viz {
+  margin: 2rem 0;
+  padding: 16px 14px 12px;
+  background: #fcfcfb;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  overflow-x: auto;
+}
+.prose figure.viz svg { width: 100%; height: auto; display: block; min-width: 460px; }
+.prose figure.viz figcaption {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  line-height: 1.6;
+  margin-top: 0.75rem;
+  min-width: 460px;
+}
+
 /* ── FTD 페이지 ── */
 .ftd-nav { display: flex; gap: 8px; flex-wrap: wrap; margin: 1.5rem 0 0; }
 .ftd-nav a { display: flex; align-items: center; gap: 6px; border: 1px solid #e5e7eb; border-radius: 999px; padding: 7px 14px; font-size: 0.84rem; font-weight: 600; color: #374151; text-decoration: none; }

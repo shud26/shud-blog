@@ -88,6 +88,7 @@ export const CATEGORIES: Category[] = [
   { key: "인프라자동화", label: "인프라 · 자동화", icon: "/icons/infra.png", desc: "맥미니 서버, 옵시디언, 파이프라인" },
   { key: "트러블슈팅", label: "트러블슈팅", icon: "/icons/bug.png", desc: "삽질과 버그 해결 기록" },
   { key: "입문에세이", label: "입문 · 에세이", icon: "/icons/essay.png", desc: "바이브코딩 여정과 생각" },
+  { key: "유튜브정리", label: "알상무 유튜브 정리", icon: "/icons/yt.png", desc: "영상 보고 내가 이해한 대로 다시 쓴 공부 노트" },
 ];
 
 export interface CategoryGroup extends Category {
