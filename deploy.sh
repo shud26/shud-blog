@@ -44,7 +44,18 @@ if [ -n "$DIRTY" ]; then
     fi
 fi
 
-npx vercel --prod --yes
+# 2026-08-08: `npx vercel`은 캐시에 없으면 최신판을 새로 받는데, 그 최신판은
+# 기존 로그인을 못 읽어 `Not authorized`로 죽는다(FTD 갱신봇이 이렇게 멈췄다).
+# 설치된 실행 파일을 직접 쓴다.
+VERCEL=""
+for c in "$HOME"/.nvm/versions/node/*/bin/vercel /opt/homebrew/bin/vercel /usr/local/bin/vercel; do
+    [ -x "$c" ] && VERCEL="$c"
+done
+if [ -z "$VERCEL" ]; then
+    echo "❌ vercel 실행 파일을 찾지 못했습니다."; exit 1
+fi
+
+PATH="$(dirname "$VERCEL"):$PATH" "$VERCEL" --prod --yes
 
 # 배포 후에도 남아 있으면 다시 알린다. 괴리는 올라간 다음에야 성립한다.
 if [ -n "$DIRTY" ]; then
