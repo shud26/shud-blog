@@ -89,6 +89,8 @@ export const CATEGORIES: Category[] = [
   { key: "트러블슈팅", label: "트러블슈팅", icon: "/icons/bug.png", desc: "삽질과 버그 해결 기록" },
   { key: "입문에세이", label: "입문 · 에세이", icon: "/icons/essay.png", desc: "바이브코딩 여정과 생각" },
   { key: "유튜브정리", label: "알상무 유튜브 정리", icon: "/icons/yt.png", desc: "영상 보고 내가 이해한 대로 다시 쓴 공부 노트" },
+  { key: "만들기", label: "만들기", icon: "/icons/make.png", desc: "대회·챌린지에 낼 것들을 만든 기록" },
+  { key: "매매기록", label: "매매 기록", icon: "/icons/trade.png", desc: "사기 전에 적고, 나중에 그대로 채점한 것" },
 ];
 
 export interface CategoryGroup extends Category {
