@@ -21,6 +21,7 @@ type Bar = { date: string; close: number };
 
 export default function VbtcPage() {
   const [bars, setBars] = useState<Bar[]>([]);
+  const [live, setLive] = useState(0);   // 아직 안 끝난 오늘 봉의 현재가
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -32,13 +33,14 @@ export default function VbtcPage() {
         );
         if (!r.ok) throw new Error(`시세 서버 응답 ${r.status}`);
         const ks = await r.json();
-        // 오늘 봉은 아직 안 끝났으니 버린다 (봇과 같은 규칙)
+        // 규칙 판정에는 끝난 봉만 쓴다(봇과 동일). 오늘 봉은 실시간 가격으로만 쓴다.
         setBars(
           ks.slice(0, -1).map((k: (string | number)[]) => ({
             date: new Date(Number(k[0])).toISOString().slice(0, 10),
             close: Number(k[4]),
           }))
         );
+        setLive(Number(ks[ks.length - 1][4]));
       } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
       } finally {
@@ -70,6 +72,8 @@ export default function VbtcPage() {
 
   const pxHalf = avg * (1 + SELL_HALF / 100);
   const pxAll = avg * (1 + SELL_ALL / 100);
+  const livePct = live ? (live / avg - 1) * 100 : pct;
+  const drift = Math.abs(livePct - pct) >= 1;   // 마감가와 1%p 넘게 벌어졌나
 
   // 지난 60일 동안 "평균보다 몇 % 비쌌나"를 매일 계산한다.
   // ⚠️ 따로 저장하지 않는다 — 받아온 시세로 그때그때 다시 계산한다.
@@ -126,7 +130,9 @@ export default function VbtcPage() {
   return (
     <main style={S.wrap}>
       <h1 style={S.h1}>비트코인 규칙 확인</h1>
-      <p style={S.sub}>{today.date} 마감 가격 기준 · 아침에 한 번 보는 화면</p>
+      <p style={S.sub}>
+        규칙 판정은 <b>{today.date} 마감 가격</b> 기준 · 아침에 한 번 보는 화면
+      </p>
 
       {/* 오늘 뭐 하나 */}
       <div style={S.hero}>
@@ -148,11 +154,23 @@ export default function VbtcPage() {
             </div>
           </div>
         )}
+        {live > 0 && (
+          <div style={S.liveBox}>
+            <b>지금 가격은 ${Math.round(live).toLocaleString()}</b>{" "}
+            (평균보다 {livePct >= 0 ? "+" : ""}{livePct.toFixed(1)}%)입니다.
+            {drift && (
+              <>
+                {" "}위 판정은 <b>{today.date} 마감 가격</b>으로 낸 것이라 지금과 다릅니다 —{" "}
+                <b>규칙은 하루가 끝난 값으로만 판단합니다.</b> 오늘 이대로 끝나면 내일 판정이 바뀝니다.
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 눈금 */}
       <div style={S.gauge}>
-        <svg viewBox="0 0 340 84" width="100%" role="img"
+        <svg viewBox="0 0 340 118" width="100%" role="img"
              aria-label="지금 가격이 평균과 파는 가격 사이 어디쯤인지 보여주는 눈금">
           <line x1="10" y1="46" x2="330" y2="46" stroke="#e5e7eb" strokeWidth="3" />
           {[
@@ -171,11 +189,29 @@ export default function VbtcPage() {
               </text>
             </g>
           ))}
-          <circle cx={10 + posOf(today.close) * 3.2} cy="46" r="7" fill="#111827" />
-          <text x={10 + posOf(today.close) * 3.2} y="24" fontSize="10" fontWeight="700"
-                fill="#111827" textAnchor="middle">
-            지금 ${Math.round(today.close).toLocaleString()}
+          {/* 규칙이 보는 값 = 끝난 봉의 마감가 (채운 점) */}
+          <circle cx={10 + posOf(today.close) * 3.2} cy="46" r="6" fill="#111827" />
+          <text x={10 + posOf(today.close) * 3.2} y="18" fontSize="8.5" fill="#6b7280" textAnchor="middle">
+            어제 마감
           </text>
+          <text x={10 + posOf(today.close) * 3.2} y="28" fontSize="10" fontWeight="700"
+                fill="#111827" textAnchor="middle">
+            ${Math.round(today.close).toLocaleString()}
+          </text>
+          {/* 지금 값 (빈 점) */}
+          {live > 0 && (
+            <>
+              <circle cx={10 + posOf(live) * 3.2} cy="46" r="6" fill="#fff"
+                      stroke="#2563eb" strokeWidth="2.5" />
+              <text x={10 + posOf(live) * 3.2} y="100" fontSize="8.5" fill="#2563eb" textAnchor="middle">
+                지금
+              </text>
+              <text x={10 + posOf(live) * 3.2} y="110" fontSize="10" fontWeight="700"
+                    fill="#2563eb" textAnchor="middle">
+                ${Math.round(live).toLocaleString()}
+              </text>
+            </>
+          )}
         </svg>
       </div>
 
@@ -355,6 +391,8 @@ const S: Record<string, React.CSSProperties> = {
   heroCase: { fontSize: 14, lineHeight: 1.8, color: "#374151" },
   caseTag: { display: "inline-block", fontSize: 11, fontWeight: 700, color: "#b45309",
              background: "#fffbeb", borderRadius: 4, padding: "1px 7px", marginRight: 7 },
+  liveBox: { marginTop: 14, paddingTop: 12, borderTop: "1px dashed #e5e7eb",
+             fontSize: 13.5, lineHeight: 1.8, color: "#374151" },
   gauge: { border: "1px solid #e5e7eb", borderRadius: 12, padding: "14px 10px 6px", marginBottom: 6 },
   chart: { border: "1px solid #e5e7eb", borderRadius: 12, padding: "10px 8px 4px" },
   legend: { display: "flex", flexWrap: "wrap", gap: 14, fontSize: 11.5, color: "#6b7280",
