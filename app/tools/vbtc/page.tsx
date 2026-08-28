@@ -28,7 +28,7 @@ export default function VbtcPage() {
     (async () => {
       try {
         const r = await fetch(
-          "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=60"
+          "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=90"
         );
         if (!r.ok) throw new Error(`시세 서버 응답 ${r.status}`);
         const ks = await r.json();
@@ -70,6 +70,24 @@ export default function VbtcPage() {
 
   const pxHalf = avg * (1 + SELL_HALF / 100);
   const pxAll = avg * (1 + SELL_ALL / 100);
+
+  // 지난 60일 동안 "평균보다 몇 % 비쌌나"를 매일 계산한다.
+  // ⚠️ 따로 저장하지 않는다 — 받아온 시세로 그때그때 다시 계산한다.
+  //    그래서 서버도 데이터베이스도 필요 없고, 글을 쓸 필요도 없다.
+  const series = bars.slice(DAYS).map((b, i) => {
+    const win = closes.slice(i + 1, i + 1 + DAYS);
+    const m = win.reduce((a, x) => a + x, 0) / DAYS;
+    const prevWin = closes.slice(i, i + DAYS);
+    const mPrev = prevWin.reduce((a, x) => a + x, 0) / DAYS;
+    return {
+      date: b.date,
+      gap: (b.close / m - 1) * 100,
+      buy: b.close > m && closes[i + DAYS - 1] <= mPrev,
+    };
+  }).slice(-60);
+
+  const buyCount = series.filter((x) => x.buy).length;
+  const daysAbove = series.filter((x) => x.gap >= SELL_HALF).length;
 
   // 가격이 그대로일 때 평균이 며칠 뒤 따라오나
   let w = closes.slice(-(DAYS - 1));
@@ -161,6 +179,26 @@ export default function VbtcPage() {
         </svg>
       </div>
 
+      {/* 지난 60일 흐름 */}
+      <h2 style={S.h2}>지난 60일 동안 어땠나</h2>
+      <p style={S.p}>
+        비트코인이 <b>평균보다 몇 % 비쌌는지</b>를 하루씩 이어 그린 것입니다.
+        위로 갈수록 비싸고, 가운데 선(0%)이 평균과 같아지는 자리입니다.
+      </p>
+      <div style={S.chart}>
+        <Chart series={series} half={SELL_HALF} all={SELL_ALL} />
+      </div>
+      <div style={S.legend}>
+        <span><span style={{ ...S.dot, background: "#0f7b3d" }} /> 사는 날</span>
+        <span><span style={{ ...S.dash, background: "#b45309" }} /> 절반 파는 선 (+{SELL_HALF}%)</span>
+        <span><span style={{ ...S.dash, background: "#c02626" }} /> 다 파는 선 (+{SELL_ALL}%)</span>
+      </div>
+      <p style={S.note}>
+        지난 60일 중 <b>사는 날은 {buyCount}번</b> 나왔고, 절반 파는 선 위에 머문 날은{" "}
+        <b>{daysAbove}일</b>이었습니다. 신호는 이 정도로 드물게 옵니다 —{" "}
+        <b>대부분의 날은 아무것도 안 하는 게 정상입니다.</b>
+      </p>
+
       {/* 규칙 세 줄 */}
       <h2 style={S.h2}>규칙은 딱 세 줄입니다</h2>
       <div style={S.rules}>
@@ -244,6 +282,46 @@ export default function VbtcPage() {
   );
 }
 
+function Chart({ series, half, all }:
+  { series: { date: string; gap: number; buy: boolean }[]; half: number; all: number }) {
+  const W = 340, H = 150, PAD_L = 30, PAD_R = 8, PAD_T = 12, PAD_B = 20;
+  const gaps = series.map((s) => s.gap);
+  const yMax = Math.max(all + 4, ...gaps) ;
+  const yMin = Math.min(-6, ...gaps);
+  const x = (i: number) => PAD_L + (i / (series.length - 1)) * (W - PAD_L - PAD_R);
+  const y = (v: number) => PAD_T + (1 - (v - yMin) / (yMax - yMin)) * (H - PAD_T - PAD_B);
+  const path = series.map((s, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(s.gap).toFixed(1)}`).join(" ");
+  const lines = [
+    { v: all, c: "#c02626" },
+    { v: half, c: "#b45309" },
+    { v: 0, c: "#9ca3af" },
+  ];
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img"
+         aria-label="지난 60일 동안 비트코인이 20일 평균보다 몇 퍼센트 비쌌는지 보여주는 꺾은선 그래프">
+      {lines.map((l) => (
+        <g key={l.v}>
+          <line x1={PAD_L} y1={y(l.v)} x2={W - PAD_R} y2={y(l.v)} stroke={l.c}
+                strokeWidth="1" strokeDasharray={l.v === 0 ? "0" : "3 3"} opacity={l.v === 0 ? 0.5 : 0.7} />
+          <text x={PAD_L - 4} y={y(l.v) + 3} fontSize="8" fill={l.c} textAnchor="end">
+            {l.v > 0 ? `+${l.v}` : l.v}%
+          </text>
+        </g>
+      ))}
+      <path d={path} fill="none" stroke="#111827" strokeWidth="1.6"
+            strokeLinejoin="round" strokeLinecap="round" />
+      {series.map((s, i) => s.buy ? (
+        <circle key={s.date} cx={x(i)} cy={y(s.gap)} r="3.6" fill="#0f7b3d" />
+      ) : null)}
+      <circle cx={x(series.length - 1)} cy={y(series[series.length - 1].gap)} r="3.6" fill="#111827" />
+      <text x={PAD_L} y={H - 6} fontSize="8" fill="#9ca3af">{series[0].date.slice(5)}</text>
+      <text x={W - PAD_R} y={H - 6} fontSize="8" fill="#9ca3af" textAnchor="end">
+        {series[series.length - 1].date.slice(5)}
+      </text>
+    </svg>
+  );
+}
+
 function RuleCard({ n, on, title, plain, now }:
   { n: string; on: boolean; title: string; plain: string; now: string }) {
   return (
@@ -278,6 +356,12 @@ const S: Record<string, React.CSSProperties> = {
   caseTag: { display: "inline-block", fontSize: 11, fontWeight: 700, color: "#b45309",
              background: "#fffbeb", borderRadius: 4, padding: "1px 7px", marginRight: 7 },
   gauge: { border: "1px solid #e5e7eb", borderRadius: 12, padding: "14px 10px 6px", marginBottom: 6 },
+  chart: { border: "1px solid #e5e7eb", borderRadius: 12, padding: "10px 8px 4px" },
+  legend: { display: "flex", flexWrap: "wrap", gap: 14, fontSize: 11.5, color: "#6b7280",
+            margin: "10px 2px 0", alignItems: "center" },
+  dot: { display: "inline-block", width: 8, height: 8, borderRadius: 4, marginRight: 5,
+         verticalAlign: "middle" },
+  dash: { display: "inline-block", width: 12, height: 2, marginRight: 5, verticalAlign: "middle" },
   rules: { display: "flex", flexDirection: "column", gap: 10 },
   rule: { border: "1px solid #e5e7eb", borderRadius: 10, padding: "14px 16px" },
   ruleOn: { borderColor: "#0f7b3d", background: "#f0fdf4" },
