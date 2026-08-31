@@ -197,6 +197,23 @@ export default function JournalPage() {
   const followPct = entries.length ? Math.round((followed / entries.length) * 100) : 100;
   const mistakes = entries.filter((e) => e.mistake_tag && e.mistake_tag !== "없음").length;
 
+  // 월간 정산 — 손으로 쓰지 않는다. 일지에서 그때그때 다시 계산한다.
+  // ⚠️ 2026-08에 정산을 처음 돌렸더니 매도일 4건이 아예 빠져 있었다.
+  //    (8/13 · 8/14 · 8/20 · 8/27) 집계가 없으면 기록이 빠진 것도 모른다.
+  const months = Object.values(
+    entries.reduce((acc: Record<string, {
+      key: string; n: number; pnl: number; followed: number; mistakes: string[];
+    }>, e) => {
+      const k = e.date.slice(0, 7);
+      acc[k] ??= { key: k, n: 0, pnl: 0, followed: 0, mistakes: [] };
+      acc[k].n += 1;
+      acc[k].pnl += e.pnl_realized;
+      if (e.plan_followed) acc[k].followed += 1;
+      if (e.mistake_tag && e.mistake_tag !== "없음") acc[k].mistakes.push(e.mistake_tag);
+      return acc;
+    }, {})
+  ).sort((a, b) => b.key.localeCompare(a.key));
+
   return (
     <div>
       <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: "0 0 0.4rem" }}>매매일지</h1>
@@ -220,6 +237,57 @@ export default function JournalPage() {
           실수 기록 <b style={{ color: "#111" }}>{mistakes}</b>회
         </span>
       </div>
+
+      {/* 월간 정산 */}
+      {months.length > 0 && (
+        <section style={{ marginBottom: "1.8rem" }}>
+          <h2 style={{ fontSize: "1rem", fontWeight: 700, margin: "0 0 0.5rem" }}>월간 정산</h2>
+          <p style={{ color: "#6b7280", fontSize: "0.8rem", margin: "0 0 0.7rem", lineHeight: 1.7 }}>
+            일지에서 자동으로 집계합니다. 따로 적지 않습니다.
+          </p>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 460, fontSize: "0.85rem" }}>
+              <tbody>
+                <tr>
+                  {["월", "기록", "계획 준수율", "실현손익", "실수"].map((h, i) => (
+                    <th key={h} style={{
+                      textAlign: i === 0 ? "left" : "right", fontSize: "0.72rem", color: "#6b7280",
+                      fontWeight: 600, padding: "0 0.55rem 0.45rem", borderBottom: "1px solid #e5e7eb",
+                      whiteSpace: "nowrap",
+                    }}>{h}</th>
+                  ))}
+                </tr>
+                {months.map((m) => {
+                  const pct = Math.round((m.followed / m.n) * 100);
+                  return (
+                    <tr key={m.key}>
+                      <td style={{ padding: "0.5rem 0.55rem", borderBottom: "1px solid #f3f4f6", fontWeight: 600 }}>
+                        {m.key.replace("-", "년 ")}월
+                      </td>
+                      <td style={{ padding: "0.5rem 0.55rem", borderBottom: "1px solid #f3f4f6", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {m.n}일
+                      </td>
+                      <td style={{ padding: "0.5rem 0.55rem", borderBottom: "1px solid #f3f4f6", textAlign: "right", fontVariantNumeric: "tabular-nums", color: pct >= 80 ? "#15803d" : "#dc2626", fontWeight: 600 }}>
+                        {pct}% <span style={{ color: "#9ca3af", fontWeight: 400 }}>({m.followed}/{m.n})</span>
+                      </td>
+                      <td style={{ padding: "0.5rem 0.55rem", borderBottom: "1px solid #f3f4f6", textAlign: "right", fontVariantNumeric: "tabular-nums", color: m.pnl > 0 ? "#15803d" : m.pnl < 0 ? "#dc2626" : "#9ca3af" }}>
+                        {m.pnl === 0 ? "—" : `${m.pnl > 0 ? "+" : ""}${m.pnl.toLocaleString()}원`}
+                      </td>
+                      <td style={{ padding: "0.5rem 0.55rem", borderBottom: "1px solid #f3f4f6", textAlign: "right", fontSize: "0.75rem", color: "#92400e" }}>
+                        {m.mistakes.length ? m.mistakes.join(" · ") : <span style={{ color: "#9ca3af" }}>없음</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ color: "#6b7280", fontSize: "0.78rem", marginTop: "0.7rem", lineHeight: 1.8 }}>
+            ⚠️ <b style={{ color: "#111" }}>실현손익은 세전이고 수수료·거래세가 빠져 있습니다.</b> 그리고 이 표에서 봐야 할 건
+            금액이 아니라 <b style={{ color: "#111" }}>계획 준수율</b>입니다 — 돈은 시장이 정하고, 준수율은 내가 정합니다.
+          </p>
+        </section>
+      )}
 
       {entries.length === 0 && (
         <p style={{ color: "#9ca3af", fontSize: "0.9rem" }}>아직 기록이 없습니다.</p>
