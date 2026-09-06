@@ -81,16 +81,18 @@ export interface Category {
 }
 
 // 표시 순서 = 이 배열 순서. 신설 카테고리는 여기 추가만 하면 됨.
+//
+// ⚠️ 여기 key 는 글 프론트매터의 `category:` 값과 **글자 그대로** 같아야 한다.
+//    2026-09-01에 카테고리를 11개에서 4개로 통합하면서 mdx 는 전부 고쳤는데
+//    이 배열을 안 고쳐서, 76편 중 어느 것도 매칭되지 않았다.
+//    결과적으로 홈의 "목차"가 통째로 비었고 /yt 도 "아직 정리한 영상이 없습니다"만 떴다.
+//    조용히 비는 종류의 버그라 배포가 성공해도 알 수가 없다.
+//    → 카테고리를 바꿀 때는 mdx 와 이 배열을 **항상 같이** 고칠 것.
 export const CATEGORIES: Category[] = [
-  { key: "게임개발", label: "게임 개발", icon: "/icons/game.png", desc: "코인던전 — 웹 게임 만들기" },
-  { key: "트레이딩봇", label: "트레이딩 봇", icon: "/icons/bot.png", desc: "매매봇 설계·운영·결산 기록" },
-  { key: "에어드랍파밍", label: "에어드랍 · 파밍", icon: "/icons/farm.png", desc: "온체인 파밍 세팅과 비용" },
-  { key: "인프라자동화", label: "인프라 · 자동화", icon: "/icons/infra.png", desc: "맥미니 서버, 옵시디언, 파이프라인" },
-  { key: "트러블슈팅", label: "트러블슈팅", icon: "/icons/bug.png", desc: "삽질과 버그 해결 기록" },
-  { key: "입문에세이", label: "입문 · 에세이", icon: "/icons/essay.png", desc: "바이브코딩 여정과 생각" },
-  { key: "유튜브정리", label: "알상무 유튜브 정리", icon: "/icons/yt.png", desc: "영상 보고 내가 이해한 대로 다시 쓴 공부 노트" },
-  { key: "만들기", label: "만들기", icon: "/icons/make.png", desc: "대회·챌린지에 낼 것들을 만든 기록" },
-  { key: "매매기록", label: "매매 기록", icon: "/icons/trade.png", desc: "사기 전에 적고, 나중에 그대로 채점한 것" },
+  { key: "봇 만들기", label: "봇 만들기", icon: "/icons/bot.png", desc: "매매봇·자동화 봇을 만들고 굴린 기록" },
+  { key: "공부 기록", label: "공부 기록", icon: "/icons/essay.png", desc: "영상과 자료를 보고 내가 이해한 대로 다시 쓴 노트" },
+  { key: "삽질 기록", label: "삽질 기록", icon: "/icons/bug.png", desc: "막힌 지점과 그걸 어떻게 뚫었는지" },
+  { key: "온체인", label: "온체인", icon: "/icons/farm.png", desc: "에어드랍·민팅·온체인 실험과 실제 비용" },
 ];
 
 export interface CategoryGroup extends Category {

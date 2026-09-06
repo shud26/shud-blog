@@ -1,8 +1,13 @@
-import { getAllPosts, CATEGORIES } from "@/lib/posts";
+import { getAllPosts } from "@/lib/posts";
 import Link from "next/link";
 import type { Metadata } from "next";
 
-const CATEGORY_KEY = "유튜브정리";
+// ⚠️ 카테고리가 아니라 **태그**로 거른다.
+//    이 글들의 category 는 "공부 기록"인데, 공부 기록에는 영상 정리가 아닌 글도 섞여 있다.
+//    카테고리로 거르면 이 페이지에 엉뚱한 글이 올라오고,
+//    영상 정리만 따로 카테고리를 파면 홈 목차가 다시 잘게 쪼개진다.
+//    태그는 글마다 붙이는 것이라 카테고리 통폐합에 영향을 받지 않는다.
+const TAG = "유튜브정리";
 
 export const metadata: Metadata = {
   title: "알상무 유튜브 정리 — shud.log",
@@ -11,8 +16,7 @@ export const metadata: Metadata = {
 };
 
 export default function YoutubeNotesPage() {
-  const meta = CATEGORIES.find((c) => c.key === CATEGORY_KEY);
-  const posts = getAllPosts().filter((p) => p.category === CATEGORY_KEY);
+  const posts = getAllPosts().filter((p) => p.tags?.includes(TAG));
 
   return (
     <div>
@@ -20,7 +24,7 @@ export default function YoutubeNotesPage() {
         <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", marginBottom: "0.5rem" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={meta?.icon ?? "/icons/yt.png"}
+            src="/icons/yt.png"
             alt=""
             width={26}
             height={26}
