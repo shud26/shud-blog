@@ -1,0 +1,19 @@
+{
+ "at": "2026-09-22T23:45:34",
+ "window_days": 30,
+ "win_pct": 30.0,
+ "total_events": 72,
+ "closed": 0,
+ "picked": 0,
+ "hits": 0,
+ "baseline": null,
+ "by_kind": {},
+ "by_why": {},
+ "by_conf": {},
+ "w90": {
+  "closed": 0,
+  "picked": 0,
+  "hits": 0
+ },
+ "rows": []
+}
