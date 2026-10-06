@@ -1,4 +1,4 @@
-import { getAllPosts, getPostsByCategory, CATEGORIES } from "@/lib/posts";
+import { getAllPosts, getPostsByCategory, getPost, getPostImage, CATEGORIES } from "@/lib/posts";
 import { TOOLS } from "@/lib/tools";
 import Link from "next/link";
 
@@ -8,7 +8,8 @@ import Link from "next/link";
 export default function Home() {
   const all = getAllPosts();
   const groups = getPostsByCategory();
-  const latest = all.slice(0, 3);
+  // 최신 6편 + 각 글 본문의 첫 그림(로컬 FLUX 대표 이미지)
+  const latest = all.slice(0, 6).map((p) => ({ ...p, image: getPostImage(getPost(p.slug).content) }));
   const iconOf = (cat?: string) => CATEGORIES.find((c) => c.key === cat)?.icon;
   const first = all.length ? all[all.length - 1].date.slice(0, 7).replace("-", ".") : "";
 
@@ -32,6 +33,8 @@ export default function Home() {
             const icon = iconOf(p.category);
             return (
               <Link key={p.slug} href={`/posts/${p.slug}`} className="card">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="thumb" src={p.image} alt="" loading="lazy" />
                 <div className="meta">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {icon && <img src={icon} alt="" width={18} height={18} />}
@@ -54,7 +57,7 @@ export default function Home() {
             <Link key={g.key} href={`/posts#${encodeURIComponent(g.key)}`} className="tile">
               <div className="top">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={g.icon} alt="" width={22} height={22} />
+                <img src={g.icon} alt="" width={44} height={44} />
                 <span className="name">{g.label}</span>
                 <span className="cnt">{g.posts.length}</span>
               </div>
