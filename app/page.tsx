@@ -1,63 +1,80 @@
-import { getAllPosts, getPostsByCategory } from "@/lib/posts";
+import { getAllPosts, getPostsByCategory, CATEGORIES } from "@/lib/posts";
+import { TOOLS } from "@/lib/tools";
 import Link from "next/link";
 
+// 2026-10-06 리디자인: 제목 89개를 한 줄씩 나열하던 홈을
+//   소개 → 숫자 띠 → 최신 글 카드 → 카테고리 타일 → 만든 도구 순으로 바꿨다.
+//   전체 목록은 /posts 로 옮겼다.
 export default function Home() {
+  const all = getAllPosts();
   const groups = getPostsByCategory();
-  const latest = getAllPosts().slice(0, 5);
-  const total = getAllPosts().length;
+  const latest = all.slice(0, 3);
+  const iconOf = (cat?: string) => CATEGORIES.find((c) => c.key === cat)?.icon;
+  const first = all.length ? all[all.length - 1].date.slice(0, 7).replace("-", ".") : "";
 
   return (
-    <div>
-      {/* 인트로 */}
-      <section style={{ marginBottom: "2.5rem" }}>
-        <p style={{ fontSize: "0.95rem", color: "#374151", lineHeight: 1.7, margin: 0 }}>
-          1월에 파이썬이 뭔지 몰랐던 사람이 봇을 만들고, 게임을 만들고, 부수며 배운 것들.
-          바이브코딩 기록 <strong>{total}편</strong>.
-        </p>
+    <div className="home wide">
+      <section className="hero">
+        <h1>1월에 파이썬이 뭔지 몰랐던 사람이<br />봇을 만들고, 부수며 배운 것들</h1>
+        <p>매매봇·자동화·온체인 실험을 직접 굴려보고 숫자로 남기는 바이브코딩 기록.</p>
+        <div className="strip">
+          <div><div className="k">쓴 글</div><div className="n">{all.length}<small>편</small></div></div>
+          <div><div className="k">카테고리</div><div className="n">{groups.length}<small>개</small></div></div>
+          <div><div className="k">만든 도구</div><div className="n">{TOOLS.length}<small>개</small></div></div>
+          <div><div className="k">기록 시작</div><div className="n">{first}</div></div>
+        </div>
       </section>
 
-      {/* 최신 글 */}
-      <section style={{ marginBottom: "3rem" }}>
-        <h2 style={{ fontSize: "0.8rem", fontWeight: 700, color: "#9ca3af", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "1rem" }}>
-          최신 글
-        </h2>
-        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-          {latest.map((post) => (
-            <li key={post.slug} style={{ padding: "0.6rem 0", borderBottom: "1px solid #f3f4f6" }}>
-              <Link href={`/posts/${post.slug}`} style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1rem" }}>
-                <span style={{ fontWeight: 600, fontSize: "0.95rem", lineHeight: 1.4 }}>{post.title}</span>
-                <span style={{ fontSize: "0.75rem", color: "#9ca3af", whiteSpace: "nowrap" }}>{post.date}</span>
+      <section>
+        <div className="sec-h"><h2>최신 글</h2><Link href="/posts">전체 보기 →</Link></div>
+        <div className="cards">
+          {latest.map((p) => {
+            const icon = iconOf(p.category);
+            return (
+              <Link key={p.slug} href={`/posts/${p.slug}`} className="card">
+                <div className="meta">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {icon && <img src={icon} alt="" width={18} height={18} />}
+                  <span>{p.category ?? "기록"}</span>
+                  <span>·</span>
+                  <span>{p.date}</span>
+                </div>
+                <div className="t">{p.title}</div>
+                {p.description && <div className="d">{p.description}</div>}
               </Link>
-            </li>
-          ))}
-        </ul>
+            );
+          })}
+        </div>
       </section>
 
-      {/* 카테고리별 목차 */}
-      <h2 style={{ fontSize: "0.8rem", fontWeight: 700, color: "#9ca3af", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "1.25rem" }}>
-        목차
-      </h2>
-      {groups.map((group) => (
-        <section key={group.key} style={{ marginBottom: "2.25rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.15rem" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={group.icon} alt="" width={22} height={22} style={{ imageRendering: "pixelated" }} />
-            <h3 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0, letterSpacing: "-0.01em" }}>{group.label}</h3>
-            <span style={{ fontSize: "0.8rem", color: "#9ca3af" }}>{group.posts.length}</span>
-          </div>
-          <p style={{ fontSize: "0.82rem", color: "#9ca3af", margin: "0 0 0.75rem 1.6rem" }}>{group.desc}</p>
-          <ul style={{ listStyle: "none", padding: "0 0 0 1.6rem", margin: 0 }}>
-            {group.posts.map((post) => (
-              <li key={post.slug} style={{ padding: "0.45rem 0", borderBottom: "1px solid #f3f4f6" }}>
-                <Link href={`/posts/${post.slug}`} style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1rem" }}>
-                  <span style={{ fontSize: "0.9rem", lineHeight: 1.45, color: "#1f2937" }}>{post.title}</span>
-                  <span style={{ fontSize: "0.72rem", color: "#b6bcc4", whiteSpace: "nowrap" }}>{post.date}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      <section>
+        <div className="sec-h"><h2>카테고리</h2><Link href="/posts">전체 목록 →</Link></div>
+        <div className="tiles">
+          {groups.map((g) => (
+            <Link key={g.key} href={`/posts#${encodeURIComponent(g.key)}`} className="tile">
+              <div className="top">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={g.icon} alt="" width={22} height={22} />
+                <span className="name">{g.label}</span>
+                <span className="cnt">{g.posts.length}</span>
+              </div>
+              <div className="d">{g.desc}</div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <div className="sec-h"><h2>만든 도구</h2><Link href="/tools">전체 보기 →</Link></div>
+        <div className="tools">
+          {TOOLS.slice(0, 6).map((t) => (
+            <a key={t.href} href={t.href} className="tool">
+              <span className="ic" style={{ background: t.color }} aria-hidden="true">{t.mark}</span>
+              <span className="tx"><span className="name">{t.name}</span><span className="d">{t.desc}</span></span>
+            </a>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

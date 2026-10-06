@@ -1,6 +1,16 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import localFont from "next/font/local";
 import "./globals.css";
+
+// 2026-10-06: 기기 기본 폰트 → Pretendard. 작업판·데일리 알파와 같은 글꼴로 맞췄다.
+//   가변 폰트 하나(2MB)로 굵기 전부를 쓴다. next/font가 이 사이트에서 직접 내보낸다(외부 CDN 없음).
+const pretendard = localFont({
+  src: "./fonts/PretendardVariable.woff2",
+  weight: "45 920",
+  display: "swap",
+  variable: "--font-pretendard",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://shud26.com"),
@@ -9,9 +19,18 @@ export const metadata: Metadata = {
   alternates: { canonical: "./" },
 };
 
+// 메뉴. 캘린더는 2026-08-21에 멈춰 있어서 10/6에 메뉴에서만 뺐다(페이지는 남아 있음).
+const NAV = [
+  { href: "/posts", label: "글" },
+  { href: "/tools", label: "도구" },
+  { href: "/alpha", label: "데일리 알파" },
+  { href: "/yt", label: "유튜브 정리" },
+  { href: "/journal", label: "일지" },
+];
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ko">
+    <html lang="ko" className={pretendard.variable}>
       <body>
         <Script
           async
@@ -19,28 +38,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           crossOrigin="anonymous"
           strategy="afterInteractive"
         />
-        <div style={{ maxWidth: 680, margin: "0 auto", padding: "0 1.25rem" }}>
-          <header style={{ padding: "2.5rem 0 2rem", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "1rem" }}>
-            <a href="/" style={{ textDecoration: "none", color: "#111" }}>
-              <div style={{ fontWeight: 700, fontSize: "1.1rem", letterSpacing: "-0.01em" }}>shud.log</div>
-              <div style={{ fontSize: "0.85rem", color: "#6b7280", marginTop: "0.2rem" }}>
-                바이브코딩 기록
-              </div>
+        <div className="site">
+          <header className="site-head">
+            <a href="/" className="brand">
+              <span className="brand-mark" aria-hidden="true">s</span>
+              <span>
+                <span className="brand-name">shud.log</span>
+                <span className="brand-sub">바이브코딩 기록</span>
+              </span>
             </a>
-            <nav style={{ display: "flex", gap: "1rem", fontSize: "0.88rem" }}>
-              <a href="/" style={{ textDecoration: "none", color: "#374151", fontWeight: 600 }}>글</a>
-              <a href="/ftd" style={{ textDecoration: "none", color: "#374151", fontWeight: 600 }}>FTD 신호기</a>
-              <a href="/yt" style={{ textDecoration: "none", color: "#374151", fontWeight: 600 }}>유튜브 정리</a>
-              <a href="/journal" style={{ textDecoration: "none", color: "#374151", fontWeight: 600 }}>일지</a>
-              <a href="/calendar" style={{ textDecoration: "none", color: "#374151", fontWeight: 600 }}>캘린더</a>
+            <nav className="site-nav" aria-label="메뉴">
+              {NAV.map((n) => (
+                <a key={n.href} href={n.href}>{n.label}</a>
+              ))}
             </nav>
           </header>
-          <main style={{ padding: "2.5rem 0 5rem" }}>{children}</main>
-          <footer style={{ borderTop: "1px solid #e5e7eb", padding: "1.5rem 0 2.5rem", fontSize: "0.8rem", color: "#9ca3af", display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+          <main className="page">{children}</main>
+          <footer className="site-foot">
             <span>© {new Date().getFullYear()} shud.log</span>
-            <a href="/about" style={{ color: "#9ca3af" }}>소개</a>
-            <a href="/privacy" style={{ color: "#9ca3af" }}>개인정보처리방침</a>
-            <a href="/contact" style={{ color: "#9ca3af" }}>연락처</a>
+            <a href="/about">소개</a>
+            <a href="/privacy">개인정보처리방침</a>
+            <a href="/contact">연락처</a>
           </footer>
         </div>
       </body>
