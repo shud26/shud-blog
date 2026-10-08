@@ -1,0 +1,27 @@
+{
+  "updated": "2026-10-08",
+  "range": "10/9 ~ 11/8",
+  "events": [
+    { "date": "2026-10-09", "time": "23:46", "tk": "XRP", "cat": "upgrade", "title": "XRPL 'Batch' 기능 켜짐", "desc": "여러 거래를 한 번에 묶어 처리하는 기능. 가장 이른 예정 시각이고, 검증인 지지가 80% 밑으로 내려가면 다시 미뤄진다.", "conf": "media", "src": "https://cryptoticker.io/en/crypto-dates-fourth-quarter-2026/" },
+    { "date": "2026-10-09", "tk": "ADI", "cat": "unlock", "title": "토큰 풀림 약 699만 개", "desc": "전체 공급의 약 0.7%, 시가총액 대비 약 7.2%.", "conf": "media", "src": "https://www.coingabbar.com/en/token-unlocks-in-october-2026-7-releases-that-could-move-markets" },
+    { "date": "2026-10-11", "time": "04:42", "tk": "ORCA", "cat": "gov", "title": "수수료 배분 바꾸는 투표 마감", "desc": "스테이킹 보상 몫 40%→10%, 10%는 사서 태우기, 커뮤니티 금고는 팀으로 옮기는 안. 10/7 기준 찬성표가 필요량의 약 3분의 1.", "conf": "media", "src": "https://solanacompass.com/news/orca-tokenholders-vote-on-cutting-xorca-rewards-to-10-moving-142m-orca-to-the-team-and-dissolving-the-council" },
+    { "date": "2026-10-11", "tk": "APT", "cat": "unlock", "title": "매달 풀리는 물량 1,131만 개", "desc": "유통량 대비 비율은 출처마다 다르다(약 2%로 나오지만 예전 수치일 수 있음).", "conf": "media", "src": "https://www.kucoin.com/news/flash/three-major-token-unlocks-to-watch-in-early-october-2026" },
+    { "date": "2026-10-14", "time": "21:30", "tk": "거시", "cat": "macro", "title": "미국 소비자물가(CPI) 발표", "desc": "9월 물가. 예상과 다르게 나오면 코인 전체가 같이 흔들리는 날.", "conf": "official", "src": "https://therighttrader.com/economic-calendar/cpi" },
+    { "date": "2026-10-14", "tk": "PUMP", "cat": "unlock", "title": "토큰 풀림 약 68.7억 개", "desc": "전체 공급의 약 0.83%.", "conf": "media", "src": "https://www.coingabbar.com/en/token-unlocks-in-october-2026-7-releases-that-could-move-markets" },
+    { "date": "2026-10-15", "tk": "S", "cat": "supply", "title": "안 받아간 에어드랍 약 3,269만 개 소각", "desc": "Sonic 시즌 1·2 에어드랍 중 아무도 안 받아간 물량을 태운다.", "conf": "media", "src": "https://cryptoticker.io/en/crypto-airdrops-week-39-2026-deadlines/" },
+    { "date": "2026-10-16", "time": "22:00", "tk": "ARB", "cat": "unlock", "title": "매달 풀리는 물량 9,265만 개", "desc": "유통량의 약 2%. 2027년 초까지 매달 이어진다.", "conf": "media", "src": "https://247wallst.com/investing/cryptocurrency/2026/10/02/arbitrum-is-up-more-than-100-since-august-and-92-6-million-arb-unlocks-every-month-until-early-2027-can-the-rally-survive-the-supply/" },
+    { "date": "2026-10-20", "tk": "ZRO", "cat": "unlock", "title": "토큰 풀림 약 2,570만 개", "desc": "전체 공급의 약 2.57%. 다른 출처는 3,125만 개라고 해서 수량이 엇갈린다.", "conf": "media", "src": "https://www.tradingview.com/news/coinmarketcal:8c476d897094b:0-layerzero-zro-token-unlock-20-october-2026/" },
+    { "date": "2026-10-21", "tk": "AKE", "cat": "unlock", "title": "토큰 풀림 약 21억 개", "desc": "전체 공급의 약 2.11%, 시가총액 대비 약 9.3%.", "conf": "media", "src": "https://www.coingabbar.com/en/token-unlocks-in-october-2026-7-releases-that-could-move-markets" },
+    { "date": "2026-10-25", "tk": "Pharos", "cat": "tge", "title": "에어드랍 받기 시작", "desc": "날짜 출처가 약하다.", "conf": "weak", "src": "https://cryptoticker.io/en/crypto-airdrops-week-39-2026-deadlines/" },
+    { "date": "2026-10-29", "time": "03:00", "tk": "거시", "cat": "macro", "title": "미국 금리 결정(FOMC)", "desc": "10/27~28 회의 결과. 발표 직후 몇 시간이 제일 크게 움직인다.", "conf": "official", "src": "https://www.federalreserve.gov/newsevents/2026-october.htm" },
+    { "date": "2026-11-01", "tk": "INJ", "cat": "unlock", "title": "재단 물량 450만 개 풀림", "desc": "전체 공급의 약 0.45%.", "conf": "media", "src": "https://www.chaincatcher.com/en/article/2293219" },
+    { "date": "2026-11-03", "tk": "거시", "cat": "macro", "title": "미국 중간선거", "desc": "결과에 따라 코인 관련 법안 분위기가 바뀔 수 있다.", "conf": "official", "src": "https://cryptoticker.io/en/crypto-dates-fourth-quarter-2026/" }
+  ],
+  "undated": [
+    { "when": "10월 중 (목표)", "tk": "SOL", "cat": "upgrade", "title": "Alpenglow 메인넷", "desc": "합의 방식을 바꾸는 큰 업그레이드. 10월 목표라고만 했고 정확한 날은 없다.", "conf": "weak", "src": "https://coinpedia.org/research-report/ethereum-glamsterdam-vs-solana-alpenglow-october-2026-protocol-comparison/" },
+    { "when": "4분기", "tk": "ETH", "cat": "upgrade", "title": "Glamsterdam 메인넷", "desc": "10/6 테스트넷(Sepolia)에 먼저 올라갔다. 메인넷 날짜는 아직 없다.", "conf": "media", "src": "https://coinpedia.org/research-report/ethereum-glamsterdam-vs-solana-alpenglow-october-2026-protocol-comparison/" }
+  ],
+  "past": [
+    { "date": "2026-10-08", "tk": "STRK", "title": "스타크넷 '레이어1 전환 검토' 발표 뒤 하루 +18%", "desc": "양자컴퓨터 대비로 레이어1 전환을 '검토 중'이라고 했다(결정 아님). 같은 주에 메인넷 업그레이드(10/5)와 비트코인 브리지 수수료 혜택도 있어서 오른 이유를 하나로 못 박기 어렵다. 이런 큰 발표는 예고 없이 나와서 이 일정판에는 미리 못 올린다.", "src": "https://www.tokenpost.com/news/investing/28042" }
+  ]
+}

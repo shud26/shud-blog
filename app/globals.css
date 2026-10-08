@@ -229,3 +229,24 @@ button, input, select, textarea { font-family: inherit; }
 .ftd-cta { display: block; text-align: center; padding: 16px; border-radius: 13px; text-decoration: none; font-weight: 700; font-size: 1rem; margin-top: 10px; }
 .ftd-cta.dark { background: #111; color: #fff; }
 .ftd-cta.line { border: 1.5px solid #111; color: #111; }
+
+/* 코인 일정판 /events (2026-10-08) */
+.evs .ev-note { font-size: 0.8rem; color: var(--muted); margin-top: 0.4rem; }
+.ev-list { list-style: none; padding: 0 !important; display: flex; flex-direction: column; gap: 10px; margin-top: 0.6rem; }
+.ev { display: flex; gap: 14px; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.ev.past { background: var(--soft); }
+.ev-day { flex: none; width: 64px; display: flex; flex-direction: column; font-variant-numeric: tabular-nums; }
+.ev-day b { font-size: 1.15rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.3; }
+.ev-day b.sm { font-size: 0.82rem; line-height: 1.4; }
+.ev-day span { font-size: 0.78rem; color: var(--muted); }
+.ev-body { min-width: 0; flex: 1; }
+.ev-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ev-tk { font-weight: 800; font-size: 0.92rem; }
+.ev-cat { font-size: 0.72rem; font-weight: 700; border: 1px solid; border-radius: 999px; padding: 1px 8px; }
+.ev-conf { font-size: 0.72rem; color: var(--muted); }
+.ev-conf.official { color: #03a65f; }
+.ev-conf.weak { color: #f04452; }
+.ev-t { font-weight: 700; margin-top: 4px; line-height: 1.45; }
+.ev-d { font-size: 0.88rem; color: var(--sub); line-height: 1.6; margin-top: 2px; }
+.ev-d a { color: var(--muted); font-size: 0.8rem; }
+@media (max-width: 560px) { .ev { gap: 10px; padding: 12px; } .ev-day { width: 48px; } }

@@ -11,6 +11,7 @@ export interface Tool {
 }
 
 export const TOOLS: Tool[] = [
+  { href: "/events", name: "코인 일정판", desc: "앞으로 4주 토큰 언락·투표·업그레이드·미국 지표", mark: "▦", color: "#191f28" },
   { href: "/alpha", name: "데일리 알파", desc: "크립토 트위터를 매일 아침 AI로 모아 요약", mark: "α", color: "#ff7a2e" },
   { href: "/tools/gap", name: "온체인 vs 거래소 가격차", desc: "같은 코인이 두 곳에서 얼마나 다르게 팔리나", mark: "≠", color: "#3182f6" },
   { href: "/tools/onchain-flow", name: "온체인 자금 흐름", desc: "체인별 돈이 어디로 들어오고 나가는지", mark: "→", color: "#03a65f" },
