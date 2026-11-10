@@ -131,7 +131,6 @@ export default function FtdPage() {
         <a href="#lv2"><img src="/icons/ftd-lv2.png" alt="" />고등학생</a>
         <a href="#lv3"><img src="/icons/ftd-lv3.png" alt="" />대학생</a>
         <a href="#lv4"><img src="/icons/ftd-lv4.png" alt="" />투자자</a>
-        <a href="https://ftd.shud26.com/now.html">지금 코스피는?</a>
       </nav>
 
       {/* ───────── 1. 중학생 ───────── */}
@@ -299,7 +298,7 @@ export default function FtdPage() {
         <p style={{ fontSize: "0.86rem" }}>
           다만 이건 Webby의 <b>현대 미국장 한정 의견</b>이고, 오닐 정본과 윌리엄오닐컴퍼니 현행 기준은 여전히
           <span className="ftd-hl"> &ldquo;거래량 전일↑&rdquo;를 필수</span>로 봐요. 그래서 이 사이트의
-          <a href="https://ftd.shud26.com/now.html" style={{ color: "inherit" }}> 코스피 실황 판정</a>은 정본대로 거래량 조건을 요구하되,
+ 코스피 실황 판정(2026-11 운영 종료)은 정본대로 거래량 조건을 요구하되,
           가격만 충족한 날은 &ldquo;in spirit FTD&rdquo;로 따로 표시합니다 (2026-07 원전 대조 리서치 반영).
         </p>
       </div>
@@ -389,9 +388,6 @@ export default function FtdPage() {
           단, 한국 ETF 변동성에 맞게 임계치 재보정이 필요하고, FTD의 절반은 실패하니 손절 룰이 필수입니다.</p>
       </div>
 
-      <a className="ftd-cta dark" href="https://ftd.shud26.com/now.html">지금 코스피 FTD 신호 보기 (실시간)</a>
-      <a className="ftd-cta line" href="https://ftd.shud26.com/case-study.html">1978~2023 실전 케이스 33개</a>
-      <a className="ftd-cta line" href="https://ftd.shud26.com/backtest.html">코스피 대형주로 직접 백테스트</a>
 
       <p style={{ color: "#9ca3af", fontSize: "0.8rem", textAlign: "center", marginTop: "2.5rem", lineHeight: 1.9 }}>
         한 개념, 네 가지 깊이 — 편한 단계부터 한 칸씩.<br />
