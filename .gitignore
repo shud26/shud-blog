@@ -41,3 +41,7 @@ yarn-error.log*
 next-env.d.ts
 .trinity/
 tools/journal_fills.json
+
+# 파이썬 캐시 (11/18 — 이게 알파판 공개를 11/05부터 막았다)
+__pycache__/
+*.pyc
